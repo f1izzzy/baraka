@@ -30,7 +30,15 @@ function makeId() {
 
 app.get("/api/deals", async (req, res) => {
   await db.read();
-  res.json(db.data.deals);
+
+  const now = new Date();
+
+  const activeDeals = db.data.deals.filter((deal) => {
+    if (!deal.expirationDate) return true;
+    return new Date(deal.expirationDate) > now;
+  });
+
+  res.json(activeDeals);
 });
 
 app.post("/api/deals", async (req, res) => {
@@ -238,4 +246,32 @@ initDB().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`API running on port ${PORT}`);
   });
+});
+app.post("/api/users/login", async (req, res) => {
+  await db.read();
+
+  const { telegramId, firstName, username } = req.body;
+
+  if (!telegramId) {
+    return res.status(400).json({ error: "telegramId is required" });
+  }
+
+  let user = db.data.users.find(
+    (u) => String(u.telegramId) === String(telegramId),
+  );
+
+  if (!user) {
+    user = {
+      _id: makeId(),
+      telegramId,
+      firstName: firstName || "",
+      username: username || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    db.data.users.push(user);
+    await db.write();
+  }
+
+  res.json(user);
 });
