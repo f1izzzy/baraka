@@ -33,12 +33,14 @@ app.get("/api/deals", async (req, res) => {
 
   const now = new Date();
 
-  const activeDeals = db.data.deals.filter((deal) => {
+  db.data.deals = db.data.deals.filter((deal) => {
     if (!deal.expirationDate) return true;
     return new Date(deal.expirationDate) > now;
   });
 
-  res.json(activeDeals);
+  await db.write();
+
+  res.json(db.data.deals);
 });
 
 app.post("/api/deals", async (req, res) => {
