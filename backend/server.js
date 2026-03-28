@@ -232,7 +232,7 @@ app.delete("/api/deals/:id", async (req, res) => {
   res.json({ success: true, deleted });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
 initDB().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
