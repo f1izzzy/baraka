@@ -18,7 +18,6 @@ async function loadDeals() {
       await fetch(`${API_BASE}/api/deals/${deal._id}/view`, {
         method: "POST",
       });
-
       sessionStorage.setItem(viewedKey, "1");
     }
 
@@ -35,7 +34,7 @@ async function loadDeals() {
           <span class="old">$${deal.oldPrice}</span>
         </div>
         <div class="meta">
-          <span>Only ${deal.remainingQuantity} left</span>
+          <span class="qty">Only ${deal.remainingQuantity} left</span>
           <span>${deal.views} viewed</span>
         </div>
         <button onclick="activateDeal('${deal._id}', this)">Activate Deal</button>
@@ -64,7 +63,9 @@ async function loginUser() {
 }
 
 async function activateDeal(dealId, btn) {
-  const qrBox = btn.parentElement.querySelector(".qr-box");
+  const content = btn.parentElement;
+  const qrBox = content.querySelector(".qr-box");
+  const qtyEl = content.querySelector(".qty");
 
   const res = await fetch(`${API_BASE}/api/activate`, {
     method: "POST",
@@ -88,6 +89,10 @@ async function activateDeal(dealId, btn) {
     <p>Your QR code:</p>
     <img src="${data.qr}" alt="QR Code">
   `;
+
+  if (qtyEl && typeof data.remainingQuantity !== "undefined") {
+    qtyEl.textContent = `Only ${data.remainingQuantity} left`;
+  }
 
   btn.disabled = true;
   btn.textContent = "Activated";
