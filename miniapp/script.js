@@ -85,10 +85,7 @@ async function activateDeal(dealId, btn) {
     return;
   }
 
-  qrBox.innerHTML = `
-    <p>Your QR code:</p>
-    <img src="${data.qr}" alt="QR Code">
-  `;
+  openModal(data.qr);
 
   if (qtyEl && typeof data.remainingQuantity !== "undefined") {
     qtyEl.textContent = `Only ${data.remainingQuantity} left`;
@@ -101,6 +98,30 @@ async function activateDeal(dealId, btn) {
 async function initApp() {
   await loginUser();
   await loadDeals();
+}
+
+window.onclick = function (e) {
+  const modal = document.getElementById("qrModal");
+  if (e.target === modal) {
+    modal.style.display = "none";
+  }
+};
+
+function openModal(qr) {
+  const modal = document.getElementById("qrModal");
+  const content = document.getElementById("qrContent");
+
+  content.innerHTML = `
+    <p>Your QR code:</p>
+    <img src="${qr}" alt="QR Code">
+    <p style="margin-top:10px;font-size:12px;">Show this at the store</p>
+  `;
+
+  modal.style.display = "block";
+}
+
+function closeModal() {
+  document.getElementById("qrModal").style.display = "none";
 }
 
 initApp();
