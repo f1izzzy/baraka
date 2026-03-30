@@ -12,7 +12,7 @@ bot.onText(/\/start/, (msg) => {
           {
             text: "Open Baraka",
             web_app: {
-              url: "https://your-miniapp-url.com",
+              url: "https://baraka-miniapp.vercel.app",
             },
           },
         ],

@@ -2,9 +2,10 @@ const tg = window.Telegram.WebApp;
 tg.expand();
 
 const telegramUser = tg.initDataUnsafe?.user || null;
+const API_BASE = "https://baraka-backend-71az.onrender.com";
 
 async function loadDeals() {
-  const res = await fetch("http://localhost:5000/api/deals");
+  const res = await fetch(`${API_BASE}/api/deals`);
   const deals = await res.json();
 
   const container = document.getElementById("deals");
@@ -14,12 +15,13 @@ async function loadDeals() {
     const viewedKey = `viewed_${deal._id}`;
 
     if (!sessionStorage.getItem(viewedKey)) {
-      await fetch(`http://localhost:5000/api/deals/${deal._id}/view`, {
+      await fetch(`${API_BASE}/api/deals/${deal._id}/view`, {
         method: "POST",
       });
 
       sessionStorage.setItem(viewedKey, "1");
     }
+
     const card = document.createElement("div");
     card.className = "card";
 
@@ -45,8 +47,10 @@ async function loadDeals() {
   }
 }
 
-if (telegramUser) {
-  fetch("http://localhost:5000/api/users/login", {
+async function loginUser() {
+  if (!telegramUser) return;
+
+  await fetch(`${API_BASE}/api/users/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -62,7 +66,7 @@ if (telegramUser) {
 async function activateDeal(dealId, btn) {
   const qrBox = btn.parentElement.querySelector(".qr-box");
 
-  const res = await fetch("http://localhost:5000/api/activate", {
+  const res = await fetch(`${API_BASE}/api/activate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -85,7 +89,13 @@ async function activateDeal(dealId, btn) {
     <img src="${data.qr}" alt="QR Code">
   `;
 
-  loadDeals();
+  btn.disabled = true;
+  btn.textContent = "Activated";
 }
 
-loadDeals();
+async function initApp() {
+  await loginUser();
+  await loadDeals();
+}
+
+initApp();

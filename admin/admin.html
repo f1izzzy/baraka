@@ -44,6 +44,7 @@
     <input id="price" placeholder="Price" />
     <input id="oldPrice" placeholder="Old Price" />
     <input id="quantity" placeholder="Quantity" />
+    <input id="expirationDate" placeholder="Expiration date (YYYY-MM-DD)" />
     <input id="image" placeholder="Image URL" />
 
     <button onclick="addDeal()">Add Deal</button>
@@ -54,6 +55,8 @@
     <div id="dealList"></div>
 
     <script>
+      const API_BASE = "https://baraka-backend-71az.onrender.com";
+
       async function addDeal() {
         const payload = {
           title: document.getElementById("title").value,
@@ -62,9 +65,10 @@
           oldPrice: Number(document.getElementById("oldPrice").value),
           remainingQuantity: Number(document.getElementById("quantity").value),
           image: document.getElementById("image").value,
+          expirationDate: document.getElementById("expirationDate").value,
         };
 
-        const res = await fetch("http://localhost:5000/api/deals", {
+        const res = await fetch(`${API_BASE}/api/deals`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -73,13 +77,15 @@
         });
 
         const data = await res.json();
+
         document.getElementById("msg").textContent =
           "Deal added: " + data.title;
+
         loadDeals();
       }
 
       async function loadDeals() {
-        const res = await fetch("http://localhost:5000/api/deals");
+        const res = await fetch(`${API_BASE}/api/deals`);
         const deals = await res.json();
 
         const list = document.getElementById("dealList");
@@ -87,6 +93,7 @@
 
         deals.forEach((deal) => {
           const item = document.createElement("div");
+
           item.style.border = "1px solid #ddd";
           item.style.padding = "12px";
           item.style.marginBottom = "12px";
@@ -95,10 +102,13 @@
           item.innerHTML = `
         <strong>${deal.title}</strong><br>
         Store: ${deal.store}<br>
-        Price: $${deal.price} <span style="text-decoration:line-through;color:#777;">$${deal.oldPrice}</span><br>
+        Price: $${deal.price} 
+        <span style="text-decoration:line-through;color:#777;">$${deal.oldPrice}</span><br>
         Quantity left: ${deal.remainingQuantity}<br>
         Views: ${deal.views}<br><br>
-        <button onclick="deleteDeal('${deal._id}')" style="background:#111;color:white;padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
+
+        <button onclick="deleteDeal('${deal._id}')" 
+          style="background:#111;color:white;padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
           Delete
         </button>
       `;
@@ -108,7 +118,7 @@
       }
 
       async function deleteDeal(id) {
-        await fetch(`http://localhost:5000/api/deals/${id}`, {
+        await fetch(`${API_BASE}/api/deals/${id}`, {
           method: "DELETE",
         });
 
