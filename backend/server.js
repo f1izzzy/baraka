@@ -39,8 +39,6 @@ function isActive(product) {
   return new Date(product.expirationDate) > new Date();
 }
 
-/* ---------------- USERS ---------------- */
-
 app.post("/api/users/login", async (req, res) => {
   await db.read();
 
@@ -69,8 +67,6 @@ app.post("/api/users/login", async (req, res) => {
 
   res.json(user);
 });
-
-/* ---------------- STORES ---------------- */
 
 app.get("/api/stores", async (req, res) => {
   await db.read();
@@ -128,26 +124,6 @@ app.post("/api/stores", async (req, res) => {
   res.json(newStore);
 });
 
-app.put("/api/stores/:id", async (req, res) => {
-  await db.read();
-
-  const store = db.data.stores.find((s) => s._id === req.params.id);
-
-  if (!store) {
-    return res.status(404).json({ error: "Store not found" });
-  }
-
-  store.name = req.body.name ?? store.name;
-  store.description = req.body.description ?? store.description;
-  store.location = req.body.location ?? store.location;
-  store.address = req.body.address ?? store.address;
-  store.coverImage = req.body.coverImage ?? store.coverImage;
-  store.logo = req.body.logo ?? store.logo;
-
-  await db.write();
-  res.json(store);
-});
-
 app.delete("/api/stores/:id", async (req, res) => {
   await db.read();
 
@@ -169,8 +145,6 @@ app.delete("/api/stores/:id", async (req, res) => {
     deletedStore,
   });
 });
-
-/* ---------------- PRODUCTS ---------------- */
 
 app.post("/api/products", async (req, res) => {
   await db.read();
@@ -212,42 +186,6 @@ app.post("/api/products", async (req, res) => {
   res.json(newProduct);
 });
 
-app.put("/api/products/:id", async (req, res) => {
-  await db.read();
-
-  const product = db.data.products.find((p) => p._id === req.params.id);
-
-  if (!product) {
-    return res.status(404).json({ error: "Product not found" });
-  }
-
-  if (req.body.title !== undefined) product.title = req.body.title;
-  if (req.body.description !== undefined)
-    product.description = req.body.description;
-  if (req.body.price !== undefined) product.price = Number(req.body.price);
-  if (req.body.oldPrice !== undefined)
-    product.oldPrice = Number(req.body.oldPrice);
-  if (req.body.image !== undefined) product.image = req.body.image;
-  if (req.body.remainingQuantity !== undefined) {
-    product.remainingQuantity = Number(req.body.remainingQuantity);
-  }
-  if (req.body.expirationDate !== undefined) {
-    product.expirationDate = req.body.expirationDate;
-  }
-  if (req.body.sizes !== undefined) {
-    product.sizes =
-      typeof req.body.sizes === "string"
-        ? req.body.sizes
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : req.body.sizes;
-  }
-
-  await db.write();
-  res.json(product);
-});
-
 app.delete("/api/products/:id", async (req, res) => {
   await db.read();
 
@@ -283,8 +221,6 @@ app.post("/api/products/:id/view", async (req, res) => {
     views: product.views,
   });
 });
-
-/* ---------------- ACTIVATION ---------------- */
 
 app.post("/api/activate", async (req, res) => {
   await db.read();

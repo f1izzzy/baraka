@@ -74,7 +74,7 @@
     </div>
 
     <script>
-      const API_BASE = "https://baraka-backend-71az.onrender.com";
+      const API_BASE = "http://localhost:5000";
 
       async function redeemPayload(payload, resultElId) {
         try {
@@ -116,6 +116,7 @@
       }
 
       const html5QrCode = new Html5Qrcode("reader");
+
       Html5Qrcode.getCameras()
         .then((devices) => {
           if (devices && devices.length) {

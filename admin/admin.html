@@ -7,7 +7,7 @@
     <style>
       body {
         font-family: Arial, sans-serif;
-        max-width: 800px;
+        max-width: 900px;
         margin: 40px auto;
         padding: 20px;
         background: #f6f6f6;
@@ -35,6 +35,12 @@
         box-sizing: border-box;
         border: 1px solid #ddd;
         border-radius: 10px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 100px;
+        resize: vertical;
       }
 
       button {
@@ -48,6 +54,11 @@
         cursor: pointer;
       }
 
+      .danger {
+        background: #111;
+        margin-top: 10px;
+      }
+
       .list-item {
         background: white;
         padding: 16px;
@@ -56,9 +67,16 @@
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
       }
 
-      .danger {
-        background: #111;
-        margin-top: 10px;
+      .mini {
+        color: #666;
+        font-size: 14px;
+      }
+
+      img.preview {
+        width: 100%;
+        max-width: 180px;
+        border-radius: 12px;
+        margin-top: 8px;
       }
     </style>
   </head>
@@ -72,7 +90,7 @@
         id="storeDescription"
         placeholder="Store description"
       ></textarea>
-      <input id="storeLocation" placeholder="Location (e.g. Tashkent)" />
+      <input id="storeLocation" placeholder="Location (example: Tashkent)" />
       <input id="storeAddress" placeholder="Full address" />
       <input id="storeCoverImage" placeholder="Cover image URL" />
       <input id="storeLogo" placeholder="Logo URL" />
@@ -110,22 +128,7 @@
     </div>
 
     <script>
-      const API_BASE = "https://baraka-backend-71az.onrender.com";
-
-      async function loadStoresToSelect() {
-        const res = await fetch(`${API_BASE}/api/stores`);
-        const stores = await res.json();
-
-        const select = document.getElementById("productStoreId");
-        select.innerHTML = "";
-
-        stores.forEach((store) => {
-          const option = document.createElement("option");
-          option.value = store._id;
-          option.textContent = store.name;
-          select.appendChild(option);
-        });
-      }
+      const API_BASE = "http://localhost:5000";
 
       async function addStore() {
         const payload = {
@@ -139,7 +142,9 @@
 
         await fetch(`${API_BASE}/api/stores`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         });
 
@@ -164,11 +169,28 @@
 
         await fetch(`${API_BASE}/api/products`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         });
 
         await loadAll();
+      }
+
+      async function loadStoresToSelect() {
+        const res = await fetch(`${API_BASE}/api/stores`);
+        const stores = await res.json();
+
+        const select = document.getElementById("productStoreId");
+        select.innerHTML = "";
+
+        stores.forEach((store) => {
+          const option = document.createElement("option");
+          option.value = store._id;
+          option.textContent = store.name;
+          select.appendChild(option);
+        });
       }
 
       async function loadStoreList() {
@@ -184,9 +206,10 @@
 
           item.innerHTML = `
             <strong>${store.name}</strong><br>
-            ${store.location}<br>
-            ${store.address}<br>
-            Products: ${store.productCount}<br>
+            <span class="mini">${store.location}</span><br>
+            <span class="mini">${store.address}</span><br>
+            <span class="mini">Products: ${store.productCount}</span><br>
+            ${store.coverImage ? `<img class="preview" src="${store.coverImage}" alt="${store.name}">` : ""}
             <button class="danger" onclick="deleteStore('${store._id}')">Delete Store</button>
           `;
 
@@ -197,8 +220,11 @@
       async function loadProductList() {
         const storeRes = await fetch(`${API_BASE}/api/stores`);
         const stores = await storeRes.json();
+
         const storeMap = {};
-        stores.forEach((s) => (storeMap[s._id] = s.name));
+        stores.forEach((s) => {
+          storeMap[s._id] = s.name;
+        });
 
         const productList = document.getElementById("productList");
         productList.innerHTML = "";
@@ -213,11 +239,13 @@
 
             item.innerHTML = `
               <strong>${product.title}</strong><br>
-              Store: ${storeMap[product.storeId] || "-"}<br>
-              Price: $${product.price} <span style="text-decoration:line-through;color:#777;">$${product.oldPrice}</span><br>
-              Sizes: ${(product.sizes || []).join(", ")}<br>
-              Quantity: ${product.remainingQuantity}<br>
-              Views: ${product.views}<br>
+              <span class="mini">Store: ${storeMap[product.storeId] || "-"}</span><br>
+              <span class="mini">Price: $${product.price} <span style="text-decoration:line-through;color:#777;">$${product.oldPrice}</span></span><br>
+              <span class="mini">Sizes: ${(product.sizes || []).join(", ")}</span><br>
+              <span class="mini">Quantity: ${product.remainingQuantity}</span><br>
+              <span class="mini">Views: ${product.views}</span><br>
+              <span class="mini">Expires: ${product.expirationDate || "-"}</span><br>
+              ${product.image ? `<img class="preview" src="${product.image}" alt="${product.title}">` : ""}
               <button class="danger" onclick="deleteProduct('${product._id}')">Delete Product</button>
             `;
 
@@ -227,12 +255,16 @@
       }
 
       async function deleteStore(id) {
-        await fetch(`${API_BASE}/api/stores/${id}`, { method: "DELETE" });
+        await fetch(`${API_BASE}/api/stores/${id}`, {
+          method: "DELETE",
+        });
         await loadAll();
       }
 
       async function deleteProduct(id) {
-        await fetch(`${API_BASE}/api/products/${id}`, { method: "DELETE" });
+        await fetch(`${API_BASE}/api/products/${id}`, {
+          method: "DELETE",
+        });
         await loadAll();
       }
 
