@@ -1,70 +1,76 @@
 {
   "stores": [
     {
-      "_id": "159dd33c-f62b-444e-97bb-b8cd832c19d3",
-      "name": "asd",
-      "description": "asd",
-      "location": "asd",
-      "address": "asd",
-      "coverImage": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "logo": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "createdAt": "2026-03-31T18:03:39.847Z"
+      "_id": "543fd2dc-109f-49cc-9bcf-55dff2bef0f0",
+      "name": "Nike",
+      "description": "Description",
+      "location": "Tashkent",
+      "address": "Full address, 21, co aub.",
+      "coverImage": "https://static.nike.com/a/images/f_auto/ce9b47ad-af3e-4c4b-a500-9ed12969440e/image.jpeg",
+      "logo": "https://media.about.nike.com/image-downloads/cf68f541-fc92-4373-91cb-086ae0fe2f88/002-nike-logos-swoosh-white.jpg",
+      "createdAt": "2026-03-31T18:12:11.745Z"
     },
     {
-      "_id": "549465c9-5778-41e6-b90a-34a719498685",
-      "name": "asdfv",
-      "description": "asd",
-      "location": "asd",
-      "address": "asd",
-      "coverImage": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "logo": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "createdAt": "2026-03-31T18:03:48.230Z"
-    },
-    {
-      "_id": "d0c1927e-302d-4439-99ab-14b6304de3b2",
-      "name": "Store name",
-      "description": "Store description",
-      "location": "Location",
-      "address": "Full Address",
-      "coverImage": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "logo": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
-      "createdAt": "2026-03-31T18:04:22.471Z"
+      "_id": "91805ae1-4563-4549-9d9d-2e919ee7d408",
+      "name": "Adidas",
+      "description": "Description lorem ipsum tadam tandir somsa, gosh non kabob anu mambu.",
+      "location": "Samarqand",
+      "address": "Namuna kocha, Toppol mahalla, 69 uy",
+      "coverImage": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2d/06/c2/69/caption.jpg?w=1200&h=-1&s=1",
+      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT7z8kQaUOT7fAMDRoyPtK76g6Z8WYblQ69kQ&s",
+      "createdAt": "2026-03-31T18:14:10.309Z"
     }
   ],
   "products": [
     {
-      "_id": "54c8a447-30f9-4a7c-b9c2-31c37c789198",
-      "storeId": "d0c1927e-302d-4439-99ab-14b6304de3b2",
-      "title": "Title",
-      "description": "Description",
-      "price": 1200,
-      "oldPrice": 1500,
-      "image": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
+      "_id": "dbfe9108-c63f-4da3-aa48-380f9d5814d7",
+      "storeId": "91805ae1-4563-4549-9d9d-2e919ee7d408",
+      "title": "T-shirt",
+      "description": "Slim fit, dry effect and so and so",
+      "price": 900,
+      "oldPrice": 1200,
+      "image": "https://cms-cdn.thesolesupplier.co.uk/2023/10/adidas-originals-korn-graphic-t-shirt-carbon-backside.jpg",
       "sizes": [
-        "S"
+        "XXXL"
       ],
-      "remainingQuantity": 3,
-      "views": 0,
+      "remainingQuantity": 12,
+      "views": 1,
       "expirationDate": "2027-12-12",
-      "createdAt": "2026-03-31T18:05:02.411Z"
+      "createdAt": "2026-03-31T18:15:53.662Z"
     },
     {
-      "_id": "b274a310-0435-4362-92b8-c589b1867620",
-      "storeId": "159dd33c-f62b-444e-97bb-b8cd832c19d3",
-      "title": "Title",
-      "description": "Description",
-      "price": 1200,
-      "oldPrice": 1500,
-      "image": "https://i.pinimg.com/236x/af/b5/a2/afb5a2a116463f0df214f907dd25a507.jpg",
+      "_id": "40c9551e-5df4-4a96-9576-1f1d57d2cf27",
+      "storeId": "543fd2dc-109f-49cc-9bcf-55dff2bef0f0",
+      "title": "T-shirt",
+      "description": "Slim fit, dry effect and so and so",
+      "price": 900,
+      "oldPrice": 1200,
+      "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQUpQoQjlXFFY1pbH89v_1Co4Ql_K0YcGT5tA&s",
       "sizes": [
-        "S"
+        "XXXL"
       ],
-      "remainingQuantity": 3,
-      "views": 0,
+      "remainingQuantity": 11,
+      "views": 2,
       "expirationDate": "2027-12-12",
-      "createdAt": "2026-03-31T18:05:42.383Z"
+      "createdAt": "2026-03-31T18:16:26.340Z"
     }
   ],
-  "activations": [],
-  "users": []
+  "activations": [
+    {
+      "_id": "85d0ed1e-2970-44e9-a104-65cfc3a41009",
+      "productId": "40c9551e-5df4-4a96-9576-1f1d57d2cf27",
+      "telegramId": 928823741,
+      "activatedAt": "2026-03-31T18:36:26.151Z",
+      "redeemed": false
+    }
+  ],
+  "users": [
+    {
+      "_id": "de4ffbaf-2967-4bbf-8da2-6d594d6aa645",
+      "telegramId": 928823741,
+      "firstName": "Xabibullox",
+      "username": "khabib4410",
+      "createdAt": "2026-03-31T18:36:21.087Z"
+    }
+  ]
 }

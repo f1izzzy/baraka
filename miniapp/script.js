@@ -2,7 +2,7 @@ const tg = window.Telegram.WebApp;
 tg.expand();
 
 const telegramUser = tg.initDataUnsafe?.user || null;
-const API_BASE = "http://localhost:5000";
+const API_BASE = "https://baraka-backend-71az.onrender.com";
 
 async function loginUser() {
   if (!telegramUser) return;
