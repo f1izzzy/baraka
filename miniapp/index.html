@@ -9,8 +9,17 @@
   </head>
   <body>
     <div class="app">
-      <h1>Baraka</h1>
-      <div id="deals"></div>
+      <div id="homeView">
+        <h1>Baraka</h1>
+        <p class="subtitle">Stores & fashion deals</p>
+        <div id="stores"></div>
+      </div>
+
+      <div id="storeView" class="hidden">
+        <button class="back-btn" onclick="goHome()">← Back</button>
+        <div id="storeDetails"></div>
+        <div id="products"></div>
+      </div>
     </div>
 
     <div id="qrModal" class="modal">

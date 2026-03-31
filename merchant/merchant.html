@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Baraka Merchant</title>
+    <script
+      src="https://unpkg.com/html5-qrcode"
+      type="text/javascript"
+    ></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 30px auto;
+        padding: 20px;
+        background: #f7f7f7;
+      }
+
+      .card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+        margin-bottom: 20px;
+      }
+
+      button {
+        width: 100%;
+        padding: 14px;
+        border: none;
+        background: #ff5a3c;
+        color: white;
+        font-weight: bold;
+        border-radius: 12px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 12px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+      }
+
+      #reader {
+        width: 100%;
+      }
+
+      .result {
+        margin-top: 14px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Merchant QR Scanner</h1>
+      <div id="reader"></div>
+      <div class="result" id="scanResult"></div>
+    </div>
+
+    <div class="card">
+      <h2>Manual QR payload</h2>
+      <textarea
+        id="manualPayload"
+        placeholder="Paste QR payload here"
+      ></textarea>
+      <button onclick="redeemManual()">Redeem Manually</button>
+      <div class="result" id="manualResult"></div>
+    </div>
+
+    <script>
+      const API_BASE = "https://baraka-backend-71az.onrender.com";
+
+      async function redeemPayload(payload, resultElId) {
+        try {
+          const parsed = JSON.parse(payload);
+
+          const res = await fetch(`${API_BASE}/api/redeem`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              activationId: parsed.activationId,
+            }),
+          });
+
+          const data = await res.json();
+
+          if (data.error) {
+            document.getElementById(resultElId).textContent =
+              "❌ " + data.error;
+            return;
+          }
+
+          document.getElementById(resultElId).textContent =
+            "✅ Redeemed successfully: " + (data.product?.title || "");
+        } catch (e) {
+          document.getElementById(resultElId).textContent =
+            "❌ Invalid QR payload";
+        }
+      }
+
+      async function redeemManual() {
+        const payload = document.getElementById("manualPayload").value;
+        await redeemPayload(payload, "manualResult");
+      }
+
+      function onScanSuccess(decodedText) {
+        redeemPayload(decodedText, "scanResult");
+      }
+
+      const html5QrCode = new Html5Qrcode("reader");
+      Html5Qrcode.getCameras()
+        .then((devices) => {
+          if (devices && devices.length) {
+            html5QrCode.start(
+              devices[0].id,
+              {
+                fps: 10,
+                qrbox: 250,
+              },
+              onScanSuccess,
+            );
+          }
+        })
+        .catch((err) => {
+          document.getElementById("scanResult").textContent =
+            "Camera error: " + err;
+        });
+    </script>
+  </body>
+</html>

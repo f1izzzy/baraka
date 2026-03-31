@@ -13,71 +13,337 @@ app.use(express.json());
 const file = path.join(__dirname, "db.json");
 const adapter = new JSONFile(file);
 const db = new Low(adapter, {
-  deals: [],
+  stores: [],
+  products: [],
   activations: [],
   users: [],
 });
-
-async function initDB() {
-  await db.read();
-  db.data ||= { deals: [], activations: [], users: [] };
-  await db.write();
-}
 
 function makeId() {
   return crypto.randomUUID();
 }
 
-app.get("/api/deals", async (req, res) => {
+async function initDB() {
+  await db.read();
+  db.data ||= {
+    stores: [],
+    products: [],
+    activations: [],
+    users: [],
+  };
+  await db.write();
+}
+
+function isActive(product) {
+  if (!product.expirationDate) return true;
+  return new Date(product.expirationDate) > new Date();
+}
+
+/* ---------------- USERS ---------------- */
+
+app.post("/api/users/login", async (req, res) => {
   await db.read();
 
-  const now = new Date();
+  const { telegramId, firstName, username } = req.body;
 
-  db.data.deals = db.data.deals.filter((deal) => {
-    if (!deal.expirationDate) return true;
-    return new Date(deal.expirationDate) > now;
+  if (!telegramId) {
+    return res.status(400).json({ error: "telegramId is required" });
+  }
+
+  let user = db.data.users.find(
+    (u) => String(u.telegramId) === String(telegramId),
+  );
+
+  if (!user) {
+    user = {
+      _id: makeId(),
+      telegramId,
+      firstName: firstName || "",
+      username: username || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    db.data.users.push(user);
+    await db.write();
+  }
+
+  res.json(user);
+});
+
+/* ---------------- STORES ---------------- */
+
+app.get("/api/stores", async (req, res) => {
+  await db.read();
+
+  const stores = db.data.stores.map((store) => {
+    const products = db.data.products.filter(
+      (p) => p.storeId === store._id && isActive(p),
+    );
+
+    return {
+      ...store,
+      productCount: products.length,
+    };
   });
+
+  res.json(stores);
+});
+
+app.get("/api/stores/:id", async (req, res) => {
+  await db.read();
+
+  const store = db.data.stores.find((s) => s._id === req.params.id);
+
+  if (!store) {
+    return res.status(404).json({ error: "Store not found" });
+  }
+
+  const products = db.data.products.filter(
+    (p) => p.storeId === store._id && isActive(p),
+  );
+
+  res.json({
+    store,
+    products,
+  });
+});
+
+app.post("/api/stores", async (req, res) => {
+  await db.read();
+
+  const newStore = {
+    _id: makeId(),
+    name: req.body.name || "",
+    description: req.body.description || "",
+    location: req.body.location || "",
+    address: req.body.address || "",
+    coverImage: req.body.coverImage || "",
+    logo: req.body.logo || "",
+    createdAt: new Date().toISOString(),
+  };
+
+  db.data.stores.push(newStore);
+  await db.write();
+
+  res.json(newStore);
+});
+
+app.put("/api/stores/:id", async (req, res) => {
+  await db.read();
+
+  const store = db.data.stores.find((s) => s._id === req.params.id);
+
+  if (!store) {
+    return res.status(404).json({ error: "Store not found" });
+  }
+
+  store.name = req.body.name ?? store.name;
+  store.description = req.body.description ?? store.description;
+  store.location = req.body.location ?? store.location;
+  store.address = req.body.address ?? store.address;
+  store.coverImage = req.body.coverImage ?? store.coverImage;
+  store.logo = req.body.logo ?? store.logo;
+
+  await db.write();
+  res.json(store);
+});
+
+app.delete("/api/stores/:id", async (req, res) => {
+  await db.read();
+
+  const storeIndex = db.data.stores.findIndex((s) => s._id === req.params.id);
+
+  if (storeIndex === -1) {
+    return res.status(404).json({ error: "Store not found" });
+  }
+
+  const deletedStore = db.data.stores.splice(storeIndex, 1)[0];
+  db.data.products = db.data.products.filter(
+    (p) => p.storeId !== deletedStore._id,
+  );
 
   await db.write();
 
-  res.json(db.data.deals);
+  res.json({
+    success: true,
+    deletedStore,
+  });
 });
 
-app.post("/api/deals", async (req, res) => {
+/* ---------------- PRODUCTS ---------------- */
+
+app.post("/api/products", async (req, res) => {
   await db.read();
 
-  const newDeal = {
+  const store = db.data.stores.find((s) => s._id === req.body.storeId);
+
+  if (!store) {
+    return res.status(400).json({ error: "Store not found" });
+  }
+
+  const sizes =
+    typeof req.body.sizes === "string"
+      ? req.body.sizes
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : Array.isArray(req.body.sizes)
+        ? req.body.sizes
+        : [];
+
+  const newProduct = {
     _id: makeId(),
+    storeId: req.body.storeId,
     title: req.body.title || "",
-    store: req.body.store || "",
+    description: req.body.description || "",
     price: Number(req.body.price) || 0,
     oldPrice: Number(req.body.oldPrice) || 0,
     image: req.body.image || "",
-    views: 0,
+    sizes,
     remainingQuantity: Number(req.body.remainingQuantity) || 0,
+    views: 0,
     expirationDate: req.body.expirationDate || null,
     createdAt: new Date().toISOString(),
   };
 
-  db.data.deals.push(newDeal);
+  db.data.products.push(newProduct);
   await db.write();
 
-  res.json(newDeal);
+  res.json(newProduct);
 });
 
-app.post("/api/deals/:id/view", async (req, res) => {
+app.put("/api/products/:id", async (req, res) => {
   await db.read();
 
-  const deal = db.data.deals.find((d) => d._id === req.params.id);
+  const product = db.data.products.find((p) => p._id === req.params.id);
 
-  if (!deal) {
-    return res.status(404).json({ error: "Deal not found" });
+  if (!product) {
+    return res.status(404).json({ error: "Product not found" });
   }
 
-  deal.views += 1;
+  if (req.body.title !== undefined) product.title = req.body.title;
+  if (req.body.description !== undefined)
+    product.description = req.body.description;
+  if (req.body.price !== undefined) product.price = Number(req.body.price);
+  if (req.body.oldPrice !== undefined)
+    product.oldPrice = Number(req.body.oldPrice);
+  if (req.body.image !== undefined) product.image = req.body.image;
+  if (req.body.remainingQuantity !== undefined) {
+    product.remainingQuantity = Number(req.body.remainingQuantity);
+  }
+  if (req.body.expirationDate !== undefined) {
+    product.expirationDate = req.body.expirationDate;
+  }
+  if (req.body.sizes !== undefined) {
+    product.sizes =
+      typeof req.body.sizes === "string"
+        ? req.body.sizes
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : req.body.sizes;
+  }
+
+  await db.write();
+  res.json(product);
+});
+
+app.delete("/api/products/:id", async (req, res) => {
+  await db.read();
+
+  const index = db.data.products.findIndex((p) => p._id === req.params.id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Product not found" });
+  }
+
+  const deleted = db.data.products.splice(index, 1)[0];
   await db.write();
 
-  res.json({ success: true, views: deal.views });
+  res.json({
+    success: true,
+    deleted,
+  });
+});
+
+app.post("/api/products/:id/view", async (req, res) => {
+  await db.read();
+
+  const product = db.data.products.find((p) => p._id === req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ error: "Product not found" });
+  }
+
+  product.views += 1;
+  await db.write();
+
+  res.json({
+    success: true,
+    views: product.views,
+  });
+});
+
+/* ---------------- ACTIVATION ---------------- */
+
+app.post("/api/activate", async (req, res) => {
+  await db.read();
+
+  const { productId, telegramId } = req.body;
+
+  const product = db.data.products.find((p) => p._id === productId);
+
+  if (!product) {
+    return res.status(404).json({ error: "Product not found" });
+  }
+
+  if (!telegramId) {
+    return res.status(400).json({ error: "Telegram user is required" });
+  }
+
+  const alreadyActivated = db.data.activations.find(
+    (a) =>
+      a.productId === productId && String(a.telegramId) === String(telegramId),
+  );
+
+  if (alreadyActivated) {
+    return res
+      .status(400)
+      .json({ error: "You already activated this product" });
+  }
+
+  if (product.remainingQuantity <= 0) {
+    return res.status(400).json({ error: "Sold out" });
+  }
+
+  product.remainingQuantity -= 1;
+
+  const activation = {
+    _id: makeId(),
+    productId,
+    telegramId,
+    activatedAt: new Date().toISOString(),
+    redeemed: false,
+  };
+
+  db.data.activations.push(activation);
+  await db.write();
+
+  const qrPayload = JSON.stringify({
+    activationId: activation._id,
+    productId: product._id,
+    telegramId,
+  });
+
+  const qr = await QRCode.toDataURL(qrPayload);
+
+  res.json({
+    success: true,
+    qr,
+    qrPayload,
+    activation,
+    remainingQuantity: product.remainingQuantity,
+  });
 });
 
 app.post("/api/redeem", async (req, res) => {
@@ -100,94 +366,12 @@ app.post("/api/redeem", async (req, res) => {
 
   await db.write();
 
-  res.json({
-    success: true,
-    activation,
-  });
-});
-
-app.post("/api/users/login", async (req, res) => {
-  await db.read();
-
-  const { telegramId, firstName, username } = req.body;
-
-  if (!telegramId) {
-    return res.status(400).json({ error: "telegramId is required" });
-  }
-
-  let user = db.data.users.find(
-    (u) => String(u.telegramId) === String(telegramId),
-  );
-
-  if (!user) {
-    user = {
-      _id: makeId(),
-      telegramId,
-      firstName: firstName || "",
-      username: username || "",
-      createdAt: new Date().toISOString(),
-    };
-
-    db.data.users.push(user);
-    await db.write();
-  }
-
-  res.json(user);
-});
-
-app.post("/api/activate", async (req, res) => {
-  await db.read();
-
-  const { dealId, telegramId } = req.body;
-
-  const deal = db.data.deals.find((d) => d._id === dealId);
-
-  if (!deal) {
-    return res.status(404).json({ error: "Deal not found" });
-  }
-
-  if (!telegramId) {
-    return res.status(400).json({ error: "Telegram user is required" });
-  }
-
-  const alreadyActivated = db.data.activations.find(
-    (a) => a.dealId === dealId && String(a.telegramId) === String(telegramId),
-  );
-
-  if (alreadyActivated) {
-    return res.status(400).json({ error: "You already activated this deal" });
-  }
-
-  if (deal.remainingQuantity <= 0) {
-    return res.status(400).json({ error: "Sold out" });
-  }
-
-  deal.remainingQuantity -= 1;
-
-  const activation = {
-    _id: makeId(),
-    dealId,
-    telegramId,
-    activatedAt: new Date().toISOString(),
-    redeemed: false,
-  };
-
-  db.data.activations.push(activation);
-  await db.write();
-
-  const qrPayload = JSON.stringify({
-    activationId: activation._id,
-    dealId: deal._id,
-    telegramId,
-  });
-
-  const qr = await QRCode.toDataURL(qrPayload);
+  const product = db.data.products.find((p) => p._id === activation.productId);
 
   res.json({
     success: true,
-    qr,
     activation,
-    remainingQuantity: deal.remainingQuantity,
+    product,
   });
 });
 
@@ -196,84 +380,10 @@ app.get("/api/activations", async (req, res) => {
   res.json(db.data.activations);
 });
 
-initDB().then(() => {
-  app.listen(5000, () => {
-    console.log("API running on http://localhost:5000");
-  });
-});
-app.put("/api/deals/:id", async (req, res) => {
-  await db.read();
-
-  const deal = db.data.deals.find((d) => d._id === req.params.id);
-
-  if (!deal) {
-    return res.status(404).json({ error: "Deal not found" });
-  }
-
-  deal.title = req.body.title ?? deal.title;
-  deal.store = req.body.store ?? deal.store;
-  deal.price =
-    req.body.price !== undefined ? Number(req.body.price) : deal.price;
-  deal.oldPrice =
-    req.body.oldPrice !== undefined ? Number(req.body.oldPrice) : deal.oldPrice;
-  deal.image = req.body.image ?? deal.image;
-  deal.remainingQuantity =
-    req.body.remainingQuantity !== undefined
-      ? Number(req.body.remainingQuantity)
-      : deal.remainingQuantity;
-  deal.expirationDate = req.body.expirationDate ?? deal.expirationDate;
-
-  await db.write();
-  res.json(deal);
-});
-
-app.delete("/api/deals/:id", async (req, res) => {
-  await db.read();
-
-  const index = db.data.deals.findIndex((d) => d._id === req.params.id);
-
-  if (index === -1) {
-    return res.status(404).json({ error: "Deal not found" });
-  }
-
-  const deleted = db.data.deals.splice(index, 1)[0];
-  await db.write();
-
-  res.json({ success: true, deleted });
-});
-
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 
 initDB().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`API running on port ${PORT}`);
   });
-});
-app.post("/api/users/login", async (req, res) => {
-  await db.read();
-
-  const { telegramId, firstName, username } = req.body;
-
-  if (!telegramId) {
-    return res.status(400).json({ error: "telegramId is required" });
-  }
-
-  let user = db.data.users.find(
-    (u) => String(u.telegramId) === String(telegramId),
-  );
-
-  if (!user) {
-    user = {
-      _id: makeId(),
-      telegramId,
-      firstName: firstName || "",
-      username: username || "",
-      createdAt: new Date().toISOString(),
-    };
-
-    db.data.users.push(user);
-    await db.write();
-  }
-
-  res.json(user);
 });

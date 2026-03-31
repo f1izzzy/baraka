@@ -7,16 +7,34 @@
     <style>
       body {
         font-family: Arial, sans-serif;
-        max-width: 500px;
+        max-width: 800px;
         margin: 40px auto;
         padding: 20px;
+        background: #f6f6f6;
       }
 
-      input {
+      h1,
+      h2 {
+        margin-bottom: 16px;
+      }
+
+      .card {
+        background: white;
+        padding: 20px;
+        border-radius: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+      }
+
+      input,
+      textarea,
+      select {
         width: 100%;
         padding: 12px;
         margin-bottom: 12px;
         box-sizing: border-box;
+        border: 1px solid #ddd;
+        border-radius: 10px;
       }
 
       button {
@@ -30,102 +48,201 @@
         cursor: pointer;
       }
 
-      .msg {
-        margin-top: 14px;
-        font-weight: bold;
+      .list-item {
+        background: white;
+        padding: 16px;
+        border-radius: 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+      }
+
+      .danger {
+        background: #111;
+        margin-top: 10px;
       }
     </style>
   </head>
   <body>
     <h1>Baraka Admin</h1>
 
-    <input id="title" placeholder="Title" />
-    <input id="store" placeholder="Store" />
-    <input id="price" placeholder="Price" />
-    <input id="oldPrice" placeholder="Old Price" />
-    <input id="quantity" placeholder="Quantity" />
-    <input id="expirationDate" placeholder="Expiration date (YYYY-MM-DD)" />
-    <input id="image" placeholder="Image URL" />
+    <div class="card">
+      <h2>Add Store</h2>
+      <input id="storeName" placeholder="Store name" />
+      <textarea
+        id="storeDescription"
+        placeholder="Store description"
+      ></textarea>
+      <input id="storeLocation" placeholder="Location (e.g. Tashkent)" />
+      <input id="storeAddress" placeholder="Full address" />
+      <input id="storeCoverImage" placeholder="Cover image URL" />
+      <input id="storeLogo" placeholder="Logo URL" />
+      <button onclick="addStore()">Add Store</button>
+    </div>
 
-    <button onclick="addDeal()">Add Deal</button>
+    <div class="card">
+      <h2>Add Product</h2>
+      <select id="productStoreId"></select>
+      <input id="productTitle" placeholder="Product title" />
+      <textarea
+        id="productDescription"
+        placeholder="Product description"
+      ></textarea>
+      <input id="productPrice" placeholder="New price" />
+      <input id="productOldPrice" placeholder="Old price" />
+      <input id="productSizes" placeholder="Sizes, example: S, M, L, XL" />
+      <input id="productQuantity" placeholder="Quantity" />
+      <input
+        id="productExpirationDate"
+        placeholder="Expiration date (YYYY-MM-DD)"
+      />
+      <input id="productImage" placeholder="Product image URL" />
+      <button onclick="addProduct()">Add Product</button>
+    </div>
 
-    <div class="msg" id="msg"></div>
+    <div class="card">
+      <h2>All Stores</h2>
+      <div id="storeList"></div>
+    </div>
 
-    <h2 style="margin-top: 30px">All Deals</h2>
-    <div id="dealList"></div>
+    <div class="card">
+      <h2>All Products</h2>
+      <div id="productList"></div>
+    </div>
 
     <script>
       const API_BASE = "https://baraka-backend-71az.onrender.com";
 
-      async function addDeal() {
+      async function loadStoresToSelect() {
+        const res = await fetch(`${API_BASE}/api/stores`);
+        const stores = await res.json();
+
+        const select = document.getElementById("productStoreId");
+        select.innerHTML = "";
+
+        stores.forEach((store) => {
+          const option = document.createElement("option");
+          option.value = store._id;
+          option.textContent = store.name;
+          select.appendChild(option);
+        });
+      }
+
+      async function addStore() {
         const payload = {
-          title: document.getElementById("title").value,
-          store: document.getElementById("store").value,
-          price: Number(document.getElementById("price").value),
-          oldPrice: Number(document.getElementById("oldPrice").value),
-          remainingQuantity: Number(document.getElementById("quantity").value),
-          image: document.getElementById("image").value,
-          expirationDate: document.getElementById("expirationDate").value,
+          name: document.getElementById("storeName").value,
+          description: document.getElementById("storeDescription").value,
+          location: document.getElementById("storeLocation").value,
+          address: document.getElementById("storeAddress").value,
+          coverImage: document.getElementById("storeCoverImage").value,
+          logo: document.getElementById("storeLogo").value,
         };
 
-        const res = await fetch(`${API_BASE}/api/deals`, {
+        await fetch(`${API_BASE}/api/stores`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
-
-        document.getElementById("msg").textContent =
-          "Deal added: " + data.title;
-
-        loadDeals();
+        await loadAll();
       }
 
-      async function loadDeals() {
-        const res = await fetch(`${API_BASE}/api/deals`);
-        const deals = await res.json();
+      async function addProduct() {
+        const payload = {
+          storeId: document.getElementById("productStoreId").value,
+          title: document.getElementById("productTitle").value,
+          description: document.getElementById("productDescription").value,
+          price: Number(document.getElementById("productPrice").value),
+          oldPrice: Number(document.getElementById("productOldPrice").value),
+          sizes: document.getElementById("productSizes").value,
+          remainingQuantity: Number(
+            document.getElementById("productQuantity").value,
+          ),
+          expirationDate: document.getElementById("productExpirationDate")
+            .value,
+          image: document.getElementById("productImage").value,
+        };
 
-        const list = document.getElementById("dealList");
+        await fetch(`${API_BASE}/api/products`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        await loadAll();
+      }
+
+      async function loadStoreList() {
+        const res = await fetch(`${API_BASE}/api/stores`);
+        const stores = await res.json();
+
+        const list = document.getElementById("storeList");
         list.innerHTML = "";
 
-        deals.forEach((deal) => {
+        stores.forEach((store) => {
           const item = document.createElement("div");
-
-          item.style.border = "1px solid #ddd";
-          item.style.padding = "12px";
-          item.style.marginBottom = "12px";
-          item.style.borderRadius = "12px";
+          item.className = "list-item";
 
           item.innerHTML = `
-        <strong>${deal.title}</strong><br>
-        Store: ${deal.store}<br>
-        Price: $${deal.price} 
-        <span style="text-decoration:line-through;color:#777;">$${deal.oldPrice}</span><br>
-        Quantity left: ${deal.remainingQuantity}<br>
-        Views: ${deal.views}<br><br>
-
-        <button onclick="deleteDeal('${deal._id}')" 
-          style="background:#111;color:white;padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
-          Delete
-        </button>
-      `;
+            <strong>${store.name}</strong><br>
+            ${store.location}<br>
+            ${store.address}<br>
+            Products: ${store.productCount}<br>
+            <button class="danger" onclick="deleteStore('${store._id}')">Delete Store</button>
+          `;
 
           list.appendChild(item);
         });
       }
 
-      async function deleteDeal(id) {
-        await fetch(`${API_BASE}/api/deals/${id}`, {
-          method: "DELETE",
-        });
+      async function loadProductList() {
+        const storeRes = await fetch(`${API_BASE}/api/stores`);
+        const stores = await storeRes.json();
+        const storeMap = {};
+        stores.forEach((s) => (storeMap[s._id] = s.name));
 
-        loadDeals();
+        const productList = document.getElementById("productList");
+        productList.innerHTML = "";
+
+        for (const store of stores) {
+          const res = await fetch(`${API_BASE}/api/stores/${store._id}`);
+          const data = await res.json();
+
+          data.products.forEach((product) => {
+            const item = document.createElement("div");
+            item.className = "list-item";
+
+            item.innerHTML = `
+              <strong>${product.title}</strong><br>
+              Store: ${storeMap[product.storeId] || "-"}<br>
+              Price: $${product.price} <span style="text-decoration:line-through;color:#777;">$${product.oldPrice}</span><br>
+              Sizes: ${(product.sizes || []).join(", ")}<br>
+              Quantity: ${product.remainingQuantity}<br>
+              Views: ${product.views}<br>
+              <button class="danger" onclick="deleteProduct('${product._id}')">Delete Product</button>
+            `;
+
+            productList.appendChild(item);
+          });
+        }
       }
 
-      loadDeals();
+      async function deleteStore(id) {
+        await fetch(`${API_BASE}/api/stores/${id}`, { method: "DELETE" });
+        await loadAll();
+      }
+
+      async function deleteProduct(id) {
+        await fetch(`${API_BASE}/api/products/${id}`, { method: "DELETE" });
+        await loadAll();
+      }
+
+      async function loadAll() {
+        await loadStoresToSelect();
+        await loadStoreList();
+        await loadProductList();
+      }
+
+      loadAll();
     </script>
   </body>
 </html>
