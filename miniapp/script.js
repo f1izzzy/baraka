@@ -2,18 +2,26 @@ const tg = window.Telegram?.WebApp || null;
 if (tg) tg.expand();
 
 const initData = tg?.initData || "";
+const rawTelegramUser = tg?.initDataUnsafe?.user || null;
 let telegramUser = null;
 
 const API_BASE = "https://baraka-backend-71az.onrender.com";
 
 console.log("tg =", tg);
-console.log("telegramUser =", telegramUser);
+console.log("rawTelegramUser =", rawTelegramUser);
 console.log("API_BASE =", API_BASE);
+
 let currentStoreId = null;
 let currentCategory = "All";
 let currentStoreProducts = [];
 let favoriteIds = [];
 let myDealsCache = [];
+
+function getTelegramId() {
+  return (
+    telegramUser?.telegramId || telegramUser?.id || rawTelegramUser?.id || null
+  );
+}
 
 async function loginUser() {
   if (!initData) {
@@ -31,10 +39,13 @@ async function loginUser() {
     });
 
     const data = await res.json();
+    console.log("auth response =", data);
 
     if (data.user) {
       telegramUser = data.user;
-      console.log("Logged in:", telegramUser);
+      console.log("Logged in user =", telegramUser);
+    } else {
+      console.warn("No user returned from backend");
     }
   } catch (err) {
     console.error("Auth error:", err);
@@ -77,13 +88,15 @@ function renderSkeleton(targetId, count = 2) {
 }
 
 async function loadFavoriteIds() {
-  if (!telegramUser) {
+  const telegramId = getTelegramId();
+
+  if (!telegramId) {
     favoriteIds = [];
     return;
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/favorites/${telegramUser.id}`);
+    const res = await fetch(`${API_BASE}/api/favorites/${telegramId}`);
 
     if (!res.ok) {
       throw new Error(`loadFavoriteIds failed: ${res.status}`);
@@ -146,7 +159,10 @@ async function openStore(storeId, category = "All") {
   const data = await res.json();
 
   renderStoreDetails(data.store);
-  currentStoreProducts = data.products || [];
+  currentStoreProducts = (data.products || []).map((p) => ({
+    ...p,
+    storeName: data.store?.name || "",
+  }));
   renderCategoryFilters(currentStoreProducts);
   renderProducts(currentStoreProducts);
 
@@ -287,9 +303,15 @@ function renderProducts(products) {
 }
 
 async function toggleFavorite(productId, btn) {
-  console.log("toggleFavorite telegramUser =", telegramUser);
+  const telegramId = getTelegramId();
+  console.log(
+    "toggleFavorite telegramId =",
+    telegramId,
+    "telegramUser =",
+    telegramUser,
+  );
 
-  if (!telegramUser) {
+  if (!telegramId) {
     alert("No Telegram user");
     return;
   }
@@ -300,7 +322,7 @@ async function toggleFavorite(productId, btn) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      telegramId: telegramUser.id,
+      telegramId,
       productId,
     }),
   });
@@ -319,15 +341,16 @@ async function toggleFavorite(productId, btn) {
 
 async function loadFavorites() {
   const container = document.getElementById("favorites");
+  const telegramId = getTelegramId();
 
-  if (!telegramUser) {
+  if (!telegramId) {
     container.innerHTML = `<div class="empty-box">Open inside Telegram to use favorites.</div>`;
     return;
   }
 
   renderSkeleton("favorites", 2);
 
-  const res = await fetch(`${API_BASE}/api/favorites/${telegramUser.id}`);
+  const res = await fetch(`${API_BASE}/api/favorites/${telegramId}`);
   const products = await res.json();
 
   container.innerHTML = "";
@@ -386,15 +409,16 @@ function formatRemaining(ms) {
 
 async function loadMyDeals() {
   const container = document.getElementById("myDeals");
+  const telegramId = getTelegramId();
 
-  if (!telegramUser) {
+  if (!telegramId) {
     container.innerHTML = `<div class="empty-box">Open inside Telegram to view your deals.</div>`;
     return;
   }
 
   renderSkeleton("myDeals", 2);
 
-  const res = await fetch(`${API_BASE}/api/my-deals/${telegramUser.id}`);
+  const res = await fetch(`${API_BASE}/api/my-deals/${telegramId}`);
   const deals = await res.json();
 
   myDealsCache = deals;
@@ -458,9 +482,15 @@ function startDealTimer(dealId, expiresAt) {
 }
 
 async function activateProduct(productId, btn) {
-  console.log("activateProduct telegramUser =", telegramUser);
+  const telegramId = getTelegramId();
+  console.log(
+    "activateProduct telegramId =",
+    telegramId,
+    "telegramUser =",
+    telegramUser,
+  );
 
-  if (!telegramUser) {
+  if (!telegramId) {
     alert("No Telegram user");
     return;
   }
@@ -475,7 +505,7 @@ async function activateProduct(productId, btn) {
     },
     body: JSON.stringify({
       productId,
-      telegramId: telegramUser.id,
+      telegramId,
     }),
   });
 
@@ -509,11 +539,9 @@ async function showSavedQr(dealId) {
     telegramId: deal.telegramId,
   });
 
-  const res = await fetch(
+  const qrUrl =
     "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" +
-      encodeURIComponent(qrPayload),
-  );
-  const qrUrl = res.url;
+    encodeURIComponent(qrPayload);
 
   openModal(qrUrl, qrPayload, deal.expiresAt);
 }
