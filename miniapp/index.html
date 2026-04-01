@@ -8,17 +8,62 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="app">
-      <div id="homeView">
-        <h1>Baraka</h1>
-        <p class="subtitle">Stores & fashion deals</p>
-        <div id="stores"></div>
-      </div>
+    <div class="app-shell">
+      <div class="app">
+        <div class="hero">
+          <div class="eyebrow">Baraka</div>
+          <h1>Stores & fashion deals</h1>
+          <p class="subtitle">
+            Discover store promotions, save favorites, and activate deals
+            instantly.
+          </p>
+        </div>
 
-      <div id="storeView" class="hidden">
-        <button class="back-btn" onclick="goHome()">← Back</button>
-        <div id="storeDetails"></div>
-        <div id="products"></div>
+        <div class="top-tabs">
+          <button class="tab-btn active" onclick="showTab('storesTab', this)">
+            Stores
+          </button>
+          <button class="tab-btn" onclick="showTab('favoritesTab', this)">
+            Favorites
+          </button>
+          <button class="tab-btn" onclick="showTab('myDealsTab', this)">
+            My Deals
+          </button>
+        </div>
+
+        <div id="storesTab">
+          <div id="homeView">
+            <div id="stores"></div>
+          </div>
+
+          <div id="storeView" class="hidden">
+            <button class="back-btn" onclick="goHome()">← Back</button>
+
+            <div id="storeDetails"></div>
+
+            <div class="toolbar">
+              <input id="searchInput" placeholder="Search products..." />
+              <select id="sortSelect" onchange="reloadCurrentStore()">
+                <option value="default">Sort</option>
+                <option value="cheap">Price ↑</option>
+                <option value="expensive">Price ↓</option>
+                <option value="views">Popular</option>
+                <option value="discount">Best discount</option>
+              </select>
+            </div>
+
+            <div id="categoryFilters"></div>
+            <div id="products"></div>
+          </div>
+        </div>
+
+        <div id="favoritesTab" class="hidden">
+          <div id="favorites"></div>
+        </div>
+
+        <div id="myDealsTab" class="hidden">
+          <div id="myDeals"></div>
+        </div>
       </div>
     </div>
 

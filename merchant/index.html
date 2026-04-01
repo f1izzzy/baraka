@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Baraka Merchant</title>
+    <script
+      src="https://unpkg.com/html5-qrcode"
+      type="text/javascript"
+    ></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, Arial, sans-serif;
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(255, 90, 60, 0.18),
+            transparent 30%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(255, 170, 90, 0.14),
+            transparent 28%
+          ),
+          linear-gradient(180deg, #f8f8fb 0%, #f1f2f6 100%);
+        color: #111;
+        min-height: 100vh;
+      }
+
+      .app {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 20px 16px 40px;
+      }
+
+      .hero {
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 12px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: #666;
+        line-height: 1.5;
+        font-size: 15px;
+      }
+
+      .card {
+        position: relative;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(18px);
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 24px;
+        padding: 18px;
+        box-shadow:
+          0 10px 30px rgba(0, 0, 0, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        margin-bottom: 18px;
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.4),
+          rgba(255, 255, 255, 0.05)
+        );
+        pointer-events: none;
+      }
+
+      .card > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .card-title {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .card-subtitle {
+        margin: 0 0 16px;
+        color: #666;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      #reader {
+        width: 100%;
+        overflow: hidden;
+        border-radius: 20px;
+        background: #fff;
+        min-height: 280px;
+      }
+
+      #reader video {
+        border-radius: 20px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 110px;
+        padding: 14px;
+        box-sizing: border-box;
+        border-radius: 16px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        font: inherit;
+        resize: vertical;
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+        outline: none;
+      }
+
+      textarea:focus {
+        border-color: rgba(255, 90, 60, 0.45);
+        box-shadow: 0 0 0 4px rgba(255, 90, 60, 0.08);
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      button {
+        width: 100%;
+        padding: 14px 16px;
+        border: none;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #ff5a3c, #ff7d4d);
+        color: white;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 12px 24px rgba(255, 90, 60, 0.22);
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease,
+          opacity 0.18s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 28px rgba(255, 90, 60, 0.28);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      .secondary-btn {
+        background: rgba(17, 17, 17, 0.9);
+        box-shadow: 0 12px 24px rgba(17, 17, 17, 0.14);
+      }
+
+      .result {
+        margin-top: 14px;
+        padding: 14px;
+        border-radius: 16px;
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 1.45;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        color: #333;
+      }
+
+      .result.success {
+        background: rgba(22, 163, 74, 0.12);
+        color: #15803d;
+        border-color: rgba(22, 163, 74, 0.18);
+      }
+
+      .result.error {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+        border-color: rgba(239, 68, 68, 0.16);
+      }
+
+      .result.loading {
+        background: rgba(255, 90, 60, 0.08);
+        color: #c2410c;
+        border-color: rgba(255, 90, 60, 0.14);
+      }
+
+      .tips {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #777;
+        line-height: 1.5;
+      }
+
+      .footer-note {
+        text-align: center;
+        color: #888;
+        font-size: 12px;
+        margin-top: 14px;
+      }
+
+      @media (max-width: 480px) {
+        h1 {
+          font-size: 28px;
+        }
+
+        .btn-row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="hero">
+        <div class="eyebrow">Baraka Merchant</div>
+        <h1>Scan and redeem deals</h1>
+        <p class="subtitle">
+          Use the camera to scan customer QR codes or paste the payload
+          manually.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">QR Scanner</h2>
+        <p class="card-subtitle">
+          Open the customer QR code and scan it with the main camera.
+        </p>
+
+        <div id="reader"></div>
+
+        <div class="btn-row">
+          <button onclick="switchCamera()">Switch Camera</button>
+        </div>
+
+        <div class="result" id="scanResult">Ready to scan.</div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Manual redeem</h2>
+        <p class="card-subtitle">
+          If scanning is not available, paste the QR payload below.
+        </p>
+
+        <textarea
+          id="manualPayload"
+          placeholder="Paste QR payload here"
+        ></textarea>
+
+        <div class="btn-row">
+          <button onclick="redeemManual()">Redeem Manually</button>
+          <button class="secondary-btn" onclick="clearManual()">Clear</button>
+        </div>
+
+        <div class="result" id="manualResult">Waiting for input.</div>
+
+        <div class="tips">
+          Tip: if the QR is already used or expired, the system will show an
+          error.
+        </div>
+      </div>
+
+      <div class="footer-note">Baraka merchant console</div>
+    </div>
+
+    <script>
+      const API_BASE = "https://baraka-backend-71az.onrender.com";
+
+      let html5QrCode = null;
+      let currentCameraId = null;
+      let cameras = [];
+      let isProcessing = false;
+
+      function setResult(elId, message, type = "default") {
+        const el = document.getElementById(elId);
+        el.textContent = message;
+        el.className = `result ${type}`;
+      }
+
+      async function redeemPayload(payload, resultElId) {
+        if (isProcessing) return;
+
+        try {
+          isProcessing = true;
+
+          const parsed = JSON.parse(payload);
+
+          if (!parsed.activationId) {
+            setResult(resultElId, "❌ Invalid QR payload", "error");
+            return;
+          }
+
+          setResult(resultElId, "Checking QR...", "loading");
+
+          const res = await fetch(`${API_BASE}/api/redeem`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              activationId: parsed.activationId,
+            }),
+          });
+
+          const data = await res.json();
+
+          if (data.error) {
+            setResult(resultElId, `❌ ${data.error}`, "error");
+            return;
+          }
+
+          setResult(
+            resultElId,
+            `✅ Redeemed successfully: ${data.product?.title || "Product"}`,
+            "success",
+          );
+        } catch (e) {
+          setResult(resultElId, "❌ Invalid QR payload", "error");
+        } finally {
+          setTimeout(() => {
+            isProcessing = false;
+          }, 1500);
+        }
+      }
+
+      async function redeemManual() {
+        const payload = document.getElementById("manualPayload").value.trim();
+
+        if (!payload) {
+          setResult("manualResult", "❌ Paste QR payload first", "error");
+          return;
+        }
+
+        await redeemPayload(payload, "manualResult");
+      }
+
+      function clearManual() {
+        document.getElementById("manualPayload").value = "";
+        setResult("manualResult", "Waiting for input.", "default");
+      }
+
+      async function startScanner(cameraId) {
+        try {
+          if (html5QrCode) {
+            try {
+              await html5QrCode.stop();
+            } catch {}
+            try {
+              await html5QrCode.clear();
+            } catch {}
+          }
+
+          html5QrCode = new Html5Qrcode("reader");
+          currentCameraId = cameraId;
+
+          await html5QrCode.start(
+            cameraId,
+            {
+              fps: 10,
+              qrbox: { width: 240, height: 240 },
+              aspectRatio: 1,
+            },
+            onScanSuccess,
+            () => {},
+          );
+
+          const activeCam = cameras.find((c) => c.id === cameraId);
+          if (activeCam) {
+            setResult(
+              "scanResult",
+              `📷 Camera: ${activeCam.label || "Active camera"}`,
+              "default",
+            );
+          }
+        } catch (err) {
+          setResult("scanResult", "❌ Camera error: " + err, "error");
+        }
+      }
+
+      async function initCamera() {
+        try {
+          cameras = await Html5Qrcode.getCameras();
+
+          if (!cameras || cameras.length === 0) {
+            setResult("scanResult", "❌ No camera found", "error");
+            return;
+          }
+
+          const backCamera =
+            cameras.find((c) => {
+              const label = (c.label || "").toLowerCase();
+              return (
+                label.includes("back") ||
+                label.includes("rear") ||
+                label.includes("environment") ||
+                label.includes("wide")
+              );
+            }) || cameras[0];
+
+          await startScanner(backCamera.id);
+        } catch (err) {
+          setResult(
+            "scanResult",
+            "❌ Unable to access camera: " + err,
+            "error",
+          );
+        }
+      }
+
+      async function switchCamera() {
+        if (!cameras || cameras.length < 2) {
+          setResult("scanResult", "ℹ️ Only one camera available", "default");
+          return;
+        }
+
+        const currentIndex = cameras.findIndex((c) => c.id === currentCameraId);
+        const nextIndex = (currentIndex + 1) % cameras.length;
+        const nextCamera = cameras[nextIndex];
+
+        await startScanner(nextCamera.id);
+      }
+
+      function onScanSuccess(decodedText) {
+        redeemPayload(decodedText, "scanResult");
+      }
+
+      window.addEventListener("beforeunload", async () => {
+        if (html5QrCode) {
+          try {
+            await html5QrCode.stop();
+          } catch {}
+        }
+      });
+
+      initCamera();
+    </script>
+  </body>
+</html>

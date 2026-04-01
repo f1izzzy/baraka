@@ -1,31 +1,115 @@
-const tg = window.Telegram.WebApp;
-tg.expand();
+const tg = window.Telegram?.WebApp || null;
+if (tg) tg.expand();
 
-const telegramUser = tg.initDataUnsafe?.user || null;
+const initData = tg?.initData || "";
+let telegramUser = null;
+
 const API_BASE = "https://baraka-backend-71az.onrender.com";
 
-async function loginUser() {
-  if (!telegramUser) return;
+console.log("tg =", tg);
+console.log("telegramUser =", telegramUser);
+console.log("API_BASE =", API_BASE);
+let currentStoreId = null;
+let currentCategory = "All";
+let currentStoreProducts = [];
+let favoriteIds = [];
+let myDealsCache = [];
 
-  await fetch(`${API_BASE}/api/users/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      telegramId: telegramUser.id,
-      firstName: telegramUser.first_name || "",
-      username: telegramUser.username || "",
-    }),
-  });
+async function loginUser() {
+  if (!initData) {
+    console.warn("No Telegram initData");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/telegram`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ initData }),
+    });
+
+    const data = await res.json();
+
+    if (data.user) {
+      telegramUser = data.user;
+      console.log("Logged in:", telegramUser);
+    }
+  } catch (err) {
+    console.error("Auth error:", err);
+  }
+}
+
+function showTab(tabId, btn) {
+  document.getElementById("storesTab").classList.add("hidden");
+  document.getElementById("favoritesTab").classList.add("hidden");
+  document.getElementById("myDealsTab").classList.add("hidden");
+
+  document.getElementById(tabId).classList.remove("hidden");
+
+  document
+    .querySelectorAll(".tab-btn")
+    .forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  if (tabId === "favoritesTab") loadFavorites();
+  if (tabId === "myDealsTab") loadMyDeals();
+}
+
+function renderSkeleton(targetId, count = 2) {
+  const container = document.getElementById(targetId);
+  container.innerHTML = "";
+
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement("div");
+    card.className = "skeleton-card";
+    card.innerHTML = `
+      <div class="skeleton-image"></div>
+      <div class="skeleton-content">
+        <div class="skeleton-line medium"></div>
+        <div class="skeleton-line long"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+}
+
+async function loadFavoriteIds() {
+  if (!telegramUser) {
+    favoriteIds = [];
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/favorites/${telegramUser.id}`);
+
+    if (!res.ok) {
+      throw new Error(`loadFavoriteIds failed: ${res.status}`);
+    }
+
+    const products = await res.json();
+    favoriteIds = products.map((p) => p._id);
+  } catch (err) {
+    console.error("loadFavoriteIds error:", err);
+    favoriteIds = [];
+  }
 }
 
 async function loadStores() {
+  renderSkeleton("stores", 2);
+
   const res = await fetch(`${API_BASE}/api/stores`);
   const stores = await res.json();
 
   const container = document.getElementById("stores");
   container.innerHTML = "";
+
+  if (!stores.length) {
+    container.innerHTML = `<div class="empty-box">No stores yet.</div>`;
+    return;
+  }
 
   stores.forEach((store) => {
     const card = document.createElement("div");
@@ -40,7 +124,7 @@ async function loadStores() {
           <span>${store.location}</span>
           <span>${store.productCount} products</span>
         </div>
-        <button onclick="openStore('${store._id}')">Open Store</button>
+        <button class="main-btn" onclick="openStore('${store._id}')">Open Store</button>
       </div>
     `;
 
@@ -48,15 +132,27 @@ async function loadStores() {
   });
 }
 
-async function openStore(storeId) {
-  const res = await fetch(`${API_BASE}/api/stores/${storeId}`);
-  const data = await res.json();
+async function openStore(storeId, category = "All") {
+  document.body.style.opacity = "0.6";
+  currentStoreId = storeId;
+  currentCategory = category;
 
   document.getElementById("homeView").classList.add("hidden");
   document.getElementById("storeView").classList.remove("hidden");
 
+  renderSkeleton("products", 2);
+
+  const res = await fetch(`${API_BASE}/api/stores/${storeId}`);
+  const data = await res.json();
+
   renderStoreDetails(data.store);
-  renderProducts(data.products);
+  currentStoreProducts = data.products || [];
+  renderCategoryFilters(currentStoreProducts);
+  renderProducts(currentStoreProducts);
+
+  setTimeout(() => {
+    document.body.style.opacity = "1";
+  }, 150);
 }
 
 function renderStoreDetails(store) {
@@ -77,20 +173,171 @@ function renderStoreDetails(store) {
   `;
 }
 
-async function renderProducts(products) {
+function renderCategoryFilters(products) {
+  const container = document.getElementById("categoryFilters");
+
+  const categories = [
+    "All",
+    ...new Set(products.map((p) => p.category).filter(Boolean)),
+  ];
+
+  container.innerHTML = `
+    <div class="category-row">
+      ${categories
+        .map(
+          (cat) => `
+          <div class="category-chip ${cat === currentCategory ? "active" : ""}" onclick="setCategory('${cat}')">
+            ${cat}
+          </div>
+        `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function setCategory(category) {
+  currentCategory = category;
+  renderCategoryFilters(currentStoreProducts);
+  renderProducts(currentStoreProducts);
+}
+
+function getFilteredAndSortedProducts(products) {
+  const search = (document.getElementById("searchInput")?.value || "")
+    .toLowerCase()
+    .trim();
+  const sort = document.getElementById("sortSelect")?.value || "default";
+
+  let filtered = [...products];
+
+  if (currentCategory !== "All") {
+    filtered = filtered.filter((p) => p.category === currentCategory);
+  }
+
+  if (search) {
+    filtered = filtered.filter((p) => {
+      const title = (p.title || "").toLowerCase();
+      const category = (p.category || "").toLowerCase();
+      const storeName = (p.storeName || "").toLowerCase();
+      return (
+        title.includes(search) ||
+        category.includes(search) ||
+        storeName.includes(search)
+      );
+    });
+  }
+
+  if (sort === "cheap") filtered.sort((a, b) => a.price - b.price);
+  if (sort === "expensive") filtered.sort((a, b) => b.price - a.price);
+  if (sort === "views") filtered.sort((a, b) => b.views - a.views);
+  if (sort === "discount") {
+    filtered.sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price));
+  }
+
+  return filtered;
+}
+
+function renderProducts(products) {
   const container = document.getElementById("products");
   container.innerHTML = "";
 
-  for (const product of products) {
-    const viewedKey = `product_viewed_${product._id}`;
+  const filtered = getFilteredAndSortedProducts(products);
 
-    if (!sessionStorage.getItem(viewedKey)) {
-      await fetch(`${API_BASE}/api/products/${product._id}/view`, {
-        method: "POST",
-      });
-      sessionStorage.setItem(viewedKey, "1");
-    }
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-box">No products found.</div>`;
+    return;
+  }
 
+  filtered.forEach((product) => {
+    const sizesHtml = (product.sizes || [])
+      .map((size) => `<span class="size-chip">${size}</span>`)
+      .join("");
+
+    const isFav = favoriteIds.includes(product._id);
+
+    const card = document.createElement("div");
+    card.className = "product-card";
+
+    card.innerHTML = `
+      <img src="${product.image}" alt="${product.title}">
+      <div class="product-content">
+        <div class="title">${product.title}</div>
+        <div class="description">${product.description || ""}</div>
+        <div class="price">
+          <span class="new">$${product.price}</span>
+          <span class="old">$${product.oldPrice}</span>
+        </div>
+        <div class="sizes">${sizesHtml}</div>
+        <div class="meta">
+          <span>${product.category || "Other"}</span>
+          <span class="qty">Only ${product.remainingQuantity} left</span>
+        </div>
+        <div class="meta">
+          <span>${product.views} viewed</span>
+        </div>
+        <div class="card-actions">
+          <button class="icon-btn ${isFav ? "active" : ""}" onclick="toggleFavorite('${product._id}', this)">♥</button>
+          <button class="main-btn" onclick="activateProduct('${product._id}', this)">Activate Deal</button>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+async function toggleFavorite(productId, btn) {
+  console.log("toggleFavorite telegramUser =", telegramUser);
+
+  if (!telegramUser) {
+    alert("No Telegram user");
+    return;
+  }
+
+  const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      telegramId: telegramUser.id,
+      productId,
+    }),
+  });
+
+  const data = await res.json();
+  console.log("toggleFavorite response =", data);
+
+  if (data.isFavorite) {
+    btn.classList.add("active");
+    if (!favoriteIds.includes(productId)) favoriteIds.push(productId);
+  } else {
+    btn.classList.remove("active");
+    favoriteIds = favoriteIds.filter((id) => id !== productId);
+  }
+}
+
+async function loadFavorites() {
+  const container = document.getElementById("favorites");
+
+  if (!telegramUser) {
+    container.innerHTML = `<div class="empty-box">Open inside Telegram to use favorites.</div>`;
+    return;
+  }
+
+  renderSkeleton("favorites", 2);
+
+  const res = await fetch(`${API_BASE}/api/favorites/${telegramUser.id}`);
+  const products = await res.json();
+
+  container.innerHTML = "";
+
+  if (!products.length) {
+    container.innerHTML = `<div class="empty-box">No favorites yet.</div>`;
+    return;
+  }
+
+  products.forEach((product) => {
     const sizesHtml = (product.sizes || [])
       .map((size) => `<span class="size-chip">${size}</span>`)
       .join("");
@@ -109,19 +356,116 @@ async function renderProducts(products) {
         </div>
         <div class="sizes">${sizesHtml}</div>
         <div class="meta">
-          <span class="qty">Only ${product.remainingQuantity} left</span>
-          <span>${product.views} viewed</span>
+          <span>${product.category || "Other"}</span>
+          <span>Only ${product.remainingQuantity} left</span>
         </div>
-        <button onclick="activateProduct('${product._id}', this)">Activate Deal</button>
+        <div class="card-actions">
+          <button class="icon-btn active" onclick="toggleFavorite('${product._id}', this); setTimeout(loadFavorites, 150)">♥</button>
+          <button class="main-btn" onclick="openProductStore('${product.storeId}')">Open Store</button>
+        </div>
       </div>
     `;
 
     container.appendChild(card);
+  });
+}
+
+function getDealStatus(deal) {
+  if (deal.redeemed) return "used";
+  if (Date.now() > deal.expiresAt) return "expired";
+  return "pending";
+}
+
+function formatRemaining(ms) {
+  if (ms <= 0) return "Expired";
+  const total = Math.floor(ms / 1000);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${min}m ${sec}s left`;
+}
+
+async function loadMyDeals() {
+  const container = document.getElementById("myDeals");
+
+  if (!telegramUser) {
+    container.innerHTML = `<div class="empty-box">Open inside Telegram to view your deals.</div>`;
+    return;
   }
+
+  renderSkeleton("myDeals", 2);
+
+  const res = await fetch(`${API_BASE}/api/my-deals/${telegramUser.id}`);
+  const deals = await res.json();
+
+  myDealsCache = deals;
+  container.innerHTML = "";
+
+  if (!deals.length) {
+    container.innerHTML = `<div class="empty-box">You have no activated deals yet.</div>`;
+    return;
+  }
+
+  deals.forEach((item) => {
+    const status = getDealStatus(item);
+    const badgeText =
+      status === "used" ? "Used" : status === "expired" ? "Expired" : "Active";
+
+    const card = document.createElement("div");
+    card.className = "deal-card";
+
+    const canShowQr = status === "pending";
+
+    card.innerHTML = `
+      <img src="${item.product.image}" alt="${item.product.title}">
+      <div class="deal-content">
+        <div class="status-badge ${status}">${badgeText}</div>
+        <div class="deal-title">${item.product.title}</div>
+        <div class="deal-sub">${item.store?.name || ""}</div>
+        <div class="deal-meta">
+          <span>Activated</span>
+          <span>${new Date(item.activatedAt).toLocaleDateString()}</span>
+        </div>
+        <div class="timer-text" id="timer_${item._id}">
+          ${status === "pending" ? formatRemaining(item.expiresAt - Date.now()) : badgeText}
+        </div>
+        ${canShowQr ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${item._id}')">Show QR again</button>` : ""}
+      </div>
+    `;
+
+    container.appendChild(card);
+
+    if (status === "pending") {
+      startDealTimer(item._id, item.expiresAt);
+    }
+  });
+}
+
+function startDealTimer(dealId, expiresAt) {
+  const el = document.getElementById(`timer_${dealId}`);
+  if (!el) return;
+
+  const interval = setInterval(() => {
+    const diff = expiresAt - Date.now();
+    if (diff <= 0) {
+      el.innerText = "Expired";
+      clearInterval(interval);
+      loadMyDeals();
+      return;
+    }
+
+    el.innerText = formatRemaining(diff);
+  }, 1000);
 }
 
 async function activateProduct(productId, btn) {
-  const content = btn.parentElement;
+  console.log("activateProduct telegramUser =", telegramUser);
+
+  if (!telegramUser) {
+    alert("No Telegram user");
+    return;
+  }
+
+  const content = btn.closest(".product-content");
   const qtyEl = content.querySelector(".qty");
 
   const res = await fetch(`${API_BASE}/api/activate`, {
@@ -131,18 +475,19 @@ async function activateProduct(productId, btn) {
     },
     body: JSON.stringify({
       productId,
-      telegramId: telegramUser ? telegramUser.id : null,
+      telegramId: telegramUser.id,
     }),
   });
 
   const data = await res.json();
+  console.log("activateProduct response =", data);
 
   if (data.error) {
     alert(data.error);
     return;
   }
 
-  openModal(data.qr, data.qrPayload);
+  openModal(data.qr, data.qrPayload, data.activation.expiresAt);
 
   if (qtyEl && typeof data.remainingQuantity !== "undefined") {
     qtyEl.textContent = `Only ${data.remainingQuantity} left`;
@@ -150,6 +495,27 @@ async function activateProduct(productId, btn) {
 
   btn.disabled = true;
   btn.textContent = "Activated";
+
+  await loadMyDeals();
+}
+
+async function showSavedQr(dealId) {
+  const deal = myDealsCache.find((d) => d._id === dealId);
+  if (!deal) return;
+
+  const qrPayload = JSON.stringify({
+    activationId: deal._id,
+    productId: deal.product._id,
+    telegramId: deal.telegramId,
+  });
+
+  const res = await fetch(
+    "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" +
+      encodeURIComponent(qrPayload),
+  );
+  const qrUrl = res.url;
+
+  openModal(qrUrl, qrPayload, deal.expiresAt);
 }
 
 function goHome() {
@@ -157,23 +523,74 @@ function goHome() {
   document.getElementById("homeView").classList.remove("hidden");
   document.getElementById("storeDetails").innerHTML = "";
   document.getElementById("products").innerHTML = "";
+  document.getElementById("categoryFilters").innerHTML = "";
+  document.getElementById("searchInput").value = "";
+  document.getElementById("sortSelect").value = "default";
+  currentStoreId = null;
+  currentCategory = "All";
+  currentStoreProducts = [];
 }
 
-function openModal(qr, qrPayload) {
+function openProductStore(storeId) {
+  document
+    .querySelectorAll(".tab-btn")
+    .forEach((b) => b.classList.remove("active"));
+  document.querySelector(".tab-btn")?.classList.add("active");
+
+  document.getElementById("favoritesTab").classList.add("hidden");
+  document.getElementById("myDealsTab").classList.add("hidden");
+  document.getElementById("storesTab").classList.remove("hidden");
+
+  openStore(storeId);
+}
+
+function reloadCurrentStore() {
+  if (currentStoreId) {
+    renderProducts(currentStoreProducts);
+  }
+}
+
+function openModal(qr, qrPayload, expiresAt) {
+  document.body.style.overflow = "hidden";
   const modal = document.getElementById("qrModal");
   const content = document.getElementById("qrContent");
 
   content.innerHTML = `
     <p>Your QR code:</p>
     <img src="${qr}" alt="QR Code">
-    <p style="margin-top:10px;font-size:12px;">Show this at the store</p>
+    <button class="main-btn" style="margin-top:12px;" onclick="copyPayload('${encodeURIComponent(qrPayload)}')">Copy Code</button>
+    <p class="timer-text" id="modalTimer"></p>
     <div class="qr-copy">${qrPayload}</div>
   `;
 
   modal.style.display = "block";
+  startModalTimer(expiresAt);
+}
+
+function startModalTimer(expiresAt) {
+  const el = document.getElementById("modalTimer");
+  if (!el) return;
+
+  const interval = setInterval(() => {
+    const diff = expiresAt - Date.now();
+    if (diff <= 0) {
+      el.innerText = "Expired";
+      clearInterval(interval);
+      return;
+    }
+
+    el.innerText = formatRemaining(diff);
+  }, 1000);
+}
+
+function copyPayload(encodedPayload) {
+  const payload = decodeURIComponent(encodedPayload);
+  navigator.clipboard.writeText(payload);
+  alert("Copied!");
 }
 
 function closeModal() {
+  document.body.style.overflow = "auto";
   document.getElementById("qrModal").style.display = "none";
 }
 
@@ -184,9 +601,58 @@ window.onclick = function (e) {
   }
 };
 
+document.addEventListener("DOMContentLoaded", () => {
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      if (currentStoreId) renderProducts(currentStoreProducts);
+    });
+  }
+});
+
 async function initApp() {
-  await loginUser();
-  await loadStores();
+  try {
+    await loginUser();
+  } catch (e) {
+    console.error("init login failed:", e);
+  }
+
+  try {
+    await loadFavoriteIds();
+  } catch (e) {
+    console.error("init favorites failed:", e);
+  }
+
+  try {
+    await loadStores();
+  } catch (e) {
+    console.error("init stores failed:", e);
+    document.getElementById("stores").innerHTML =
+      `<div class="empty-box">Failed to load stores.</div>`;
+  }
 }
 
 initApp();
+
+/* ===== RIPPLE EFFECT ===== */
+
+document.addEventListener("click", function (e) {
+  const target = e.target.closest(".main-btn, .icon-btn");
+  if (!target) return;
+
+  const circle = document.createElement("span");
+  const rect = target.getBoundingClientRect();
+
+  const size = Math.max(rect.width, rect.height);
+  circle.style.width = circle.style.height = size + "px";
+
+  circle.style.left = e.clientX - rect.left - size / 2 + "px";
+  circle.style.top = e.clientY - rect.top - size / 2 + "px";
+
+  target.classList.add("ripple");
+  circle.classList.add("ripple");
+
+  target.appendChild(circle);
+
+  setTimeout(() => circle.remove(), 600);
+});

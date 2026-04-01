@@ -1,76 +1,46 @@
 {
   "stores": [
     {
-      "_id": "543fd2dc-109f-49cc-9bcf-55dff2bef0f0",
+      "_id": "052dc6ff-5588-412e-bdb5-a0bb2de8cc7c",
       "name": "Nike",
-      "description": "Description",
-      "location": "Tashkent",
-      "address": "Full address, 21, co aub.",
+      "description": "Description of store is here.",
+      "location": "Toshkent",
+      "address": "Toshkent, Olmazor tum. Namuna 31a",
       "coverImage": "https://static.nike.com/a/images/f_auto/ce9b47ad-af3e-4c4b-a500-9ed12969440e/image.jpeg",
       "logo": "https://media.about.nike.com/image-downloads/cf68f541-fc92-4373-91cb-086ae0fe2f88/002-nike-logos-swoosh-white.jpg",
-      "createdAt": "2026-03-31T18:12:11.745Z"
+      "createdAt": "2026-03-31T19:51:35.907Z"
     },
     {
-      "_id": "91805ae1-4563-4549-9d9d-2e919ee7d408",
+      "_id": "19a02984-ab72-4ba3-a23c-e3aaf9805594",
       "name": "Adidas",
-      "description": "Description lorem ipsum tadam tandir somsa, gosh non kabob anu mambu.",
+      "description": "Description of store is here.",
       "location": "Samarqand",
-      "address": "Namuna kocha, Toppol mahalla, 69 uy",
+      "address": "Samarqand, Olmaliq tum. Norin 69b",
       "coverImage": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2d/06/c2/69/caption.jpg?w=1200&h=-1&s=1",
       "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT7z8kQaUOT7fAMDRoyPtK76g6Z8WYblQ69kQ&s",
-      "createdAt": "2026-03-31T18:14:10.309Z"
+      "createdAt": "2026-03-31T19:52:39.943Z"
     }
   ],
   "products": [
     {
-      "_id": "dbfe9108-c63f-4da3-aa48-380f9d5814d7",
-      "storeId": "91805ae1-4563-4549-9d9d-2e919ee7d408",
-      "title": "T-shirt",
-      "description": "Slim fit, dry effect and so and so",
+      "_id": "94a44fe9-4d30-4e4b-aaa8-b5b2196feb09",
+      "storeId": "052dc6ff-5588-412e-bdb5-a0bb2de8cc7c",
+      "title": "Title",
+      "description": "Description",
+      "category": "T-shirt",
       "price": 900,
       "oldPrice": 1200,
-      "image": "https://cms-cdn.thesolesupplier.co.uk/2023/10/adidas-originals-korn-graphic-t-shirt-carbon-backside.jpg",
+      "image": "https://images.asos-media.com/products/nike-swoosh-fm-graphic-backprint-t-shirt-in-black/206011737-1-black?$n_640w$&wid=513&fit=constrain",
       "sizes": [
-        "XXXL"
+        "M"
       ],
-      "remainingQuantity": 12,
+      "remainingQuantity": 23,
       "views": 1,
       "expirationDate": "2027-12-12",
-      "createdAt": "2026-03-31T18:15:53.662Z"
-    },
-    {
-      "_id": "40c9551e-5df4-4a96-9576-1f1d57d2cf27",
-      "storeId": "543fd2dc-109f-49cc-9bcf-55dff2bef0f0",
-      "title": "T-shirt",
-      "description": "Slim fit, dry effect and so and so",
-      "price": 900,
-      "oldPrice": 1200,
-      "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQUpQoQjlXFFY1pbH89v_1Co4Ql_K0YcGT5tA&s",
-      "sizes": [
-        "XXXL"
-      ],
-      "remainingQuantity": 11,
-      "views": 2,
-      "expirationDate": "2027-12-12",
-      "createdAt": "2026-03-31T18:16:26.340Z"
+      "createdAt": "2026-03-31T19:54:24.332Z"
     }
   ],
-  "activations": [
-    {
-      "_id": "85d0ed1e-2970-44e9-a104-65cfc3a41009",
-      "productId": "40c9551e-5df4-4a96-9576-1f1d57d2cf27",
-      "telegramId": 928823741,
-      "activatedAt": "2026-03-31T18:36:26.151Z",
-      "redeemed": false
-    }
-  ],
-  "users": [
-    {
-      "_id": "de4ffbaf-2967-4bbf-8da2-6d594d6aa645",
-      "telegramId": 928823741,
-      "firstName": "Xabibullox",
-      "username": "khabib4410",
-      "createdAt": "2026-03-31T18:36:21.087Z"
-    }
-  ]
+  "activations": [],
+  "users": [],
+  "favorites": []
 }
