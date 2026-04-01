@@ -573,3 +573,32 @@ app.post("/api/auth/telegram", async (req, res) => {
     res.status(500).json({ error: "Auth failed" });
   }
 });
+
+const TelegramBot = require("node-telegram-bot-api");
+
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+if (!BOT_TOKEN) {
+  console.log("❌ BOT_TOKEN not found");
+} else {
+  const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+  bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, "Open Baraka", {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Baraka",
+              web_app: {
+                url: "https://baraka-miniapp.vercel.app",
+              },
+            },
+          ],
+        ],
+      },
+    });
+  });
+
+  console.log("🤖 Bot started");
+}

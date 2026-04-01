@@ -614,7 +614,7 @@ function startModalTimer(expiresAt) {
 function copyPayload(encodedPayload) {
   const payload = decodeURIComponent(encodedPayload);
   navigator.clipboard.writeText(payload);
-  alert("Copied!");
+  showToast("Copied!");
 }
 
 function closeModal() {
@@ -684,3 +684,9 @@ document.addEventListener("click", function (e) {
 
   setTimeout(() => circle.remove(), 600);
 });
+function showToast(text) {
+  const t = document.getElementById("toast");
+  t.innerText = text;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2000);
+}
