@@ -14,6 +14,7 @@ console.log("API_BASE =", API_BASE);
 let currentStoreId = null;
 let currentCategory = "All";
 let currentStoreProducts = [];
+let selectedProducts = [];
 let favoriteIds = [];
 let myDealsCache = [];
 
@@ -293,13 +294,74 @@ function renderProducts(products) {
         </div>
         <div class="card-actions">
           <button class="icon-btn ${isFav ? "active" : ""}" onclick="toggleFavorite('${product._id}', this)">♥</button>
-          <button class="main-btn" onclick="activateProduct('${product._id}', this)">Activate Deal</button>
+          <button class="main-btn" onclick="toggleSelect('${product._id}', this)">Add</button>
         </div>
       </div>
     `;
 
     container.appendChild(card);
   });
+}
+
+function toggleSelect(productId, btn) {
+  if (selectedProducts.includes(productId)) {
+    selectedProducts = selectedProducts.filter((id) => id !== productId);
+    btn.textContent = "Add";
+    btn.style.background = "";
+  } else {
+    selectedProducts.push(productId);
+    btn.textContent = "Added";
+    btn.style.background = "#00c853";
+  }
+
+  renderBottomBar();
+}
+
+function renderBottomBar() {
+  const bar = document.getElementById("bottomBar");
+  const count = document.getElementById("selectedCount");
+
+  if (!selectedProducts.length) {
+    bar.classList.add("hidden");
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  count.textContent = `${selectedProducts.length} selected`;
+}
+
+async function activateStore() {
+  const telegramId = getTelegramId();
+
+  if (!telegramId) {
+    alert("No Telegram user");
+    return;
+  }
+
+  const res = await fetch(`${API_BASE}/api/activate-store`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      telegramId,
+      storeId: currentStoreId,
+      productIds: selectedProducts,
+    }),
+  });
+
+  const data = await res.json();
+
+  if (data.error) {
+    alert(data.error);
+    return;
+  }
+
+  openModal(data.qr, data.qrPayload, data.activation.expiresAt);
+
+  selectedProducts = [];
+  renderBottomBar();
+  loadMyDeals();
 }
 
 async function toggleFavorite(productId, btn) {
@@ -430,29 +492,47 @@ async function loadMyDeals() {
   }
 
   deals.forEach((item) => {
-    const status = getDealStatus(item);
+    const status = item.redeemed
+      ? "used"
+      : Date.now() > item.expiresAt
+        ? "expired"
+        : "pending";
+
     const badgeText =
       status === "used" ? "Used" : status === "expired" ? "Expired" : "Active";
+
+    const productsHtml = (item.products || [])
+      .map(
+        (p) => `
+          <div class="deal-product-row">
+            <span>${p.title}</span>
+            <span>$${p.price}</span>
+          </div>
+        `,
+      )
+      .join("");
 
     const card = document.createElement("div");
     card.className = "deal-card";
 
-    const canShowQr = status === "pending";
-
     card.innerHTML = `
-      <img src="${item.product.image}" alt="${item.product.title}">
       <div class="deal-content">
         <div class="status-badge ${status}">${badgeText}</div>
-        <div class="deal-title">${item.product.title}</div>
-        <div class="deal-sub">${item.store?.name || ""}</div>
+        <div class="deal-title">${item.store?.name || "Store"}</div>
+        <div class="deal-sub">${(item.products || []).length} items selected</div>
         <div class="deal-meta">
           <span>Activated</span>
           <span>${new Date(item.activatedAt).toLocaleDateString()}</span>
         </div>
+        <div class="deal-products">${productsHtml}</div>
         <div class="timer-text" id="timer_${item._id}">
           ${status === "pending" ? formatRemaining(item.expiresAt - Date.now()) : badgeText}
         </div>
-        ${canShowQr ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${item._id}')">Show QR again</button>` : ""}
+        ${
+          status === "pending"
+            ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${item._id}')">Show QR again</button>`
+            : ""
+        }
       </div>
     `;
 
@@ -462,6 +542,19 @@ async function loadMyDeals() {
       startDealTimer(item._id, item.expiresAt);
     }
   });
+}
+
+function renderBottomBar() {
+  const bar = document.getElementById("bottomBar");
+  const count = document.getElementById("selectedCount");
+
+  if (!selectedProducts.length) {
+    bar.classList.add("hidden");
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  count.textContent = `${selectedProducts.length} selected`;
 }
 
 function startDealTimer(dealId, expiresAt) {

@@ -76,6 +76,19 @@
 
     <div id="toast"></div>
 
+    <div id="bottomBar" class="bottom-bar hidden">
+      <span id="selectedCount">0 selected</span>
+      <button onclick="activateStore()">Activate</button>
+    </div>
+
+    <div id="bottomBar" class="bottom-bar hidden">
+      <div class="bottom-bar-left">
+        <div class="bottom-bar-title">Selected items</div>
+        <div class="bottom-bar-count" id="selectedCount">0 selected</div>
+      </div>
+      <button class="bottom-bar-btn" onclick="activateStore()">Activate</button>
+    </div>
+
     <script src="script.js"></script>
   </body>
 </html>
