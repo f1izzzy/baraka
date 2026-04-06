@@ -430,18 +430,18 @@ app.get("/api/my-deals/:telegramId", async (req, res) => {
   const userActivations = db.data.activations
     .filter((a) => String(a.telegramId) === String(telegramId))
     .map((a) => {
-      const product = db.data.products.find((p) => p._id === a.productId);
-      const store = product
-        ? db.data.stores.find((s) => s._id === product.storeId)
-        : null;
+      const store = db.data.stores.find((s) => s._id === a.storeId);
+
+      const products = (a.productIds || [])
+        .map((id) => db.data.products.find((p) => p._id === id))
+        .filter(Boolean);
 
       return {
         ...a,
-        product,
         store,
+        products,
       };
-    })
-    .filter((item) => item.product);
+    });
 
   res.json(userActivations);
 });
@@ -450,6 +450,10 @@ app.post("/api/redeem", async (req, res) => {
   await db.read();
 
   const { activationId } = req.body;
+
+  if (!activationId) {
+    return res.status(400).json({ error: "activationId is required" });
+  }
 
   const activation = db.data.activations.find((a) => a._id === activationId);
 
@@ -465,17 +469,27 @@ app.post("/api/redeem", async (req, res) => {
     return res.status(400).json({ error: "QR already used" });
   }
 
+  const store = db.data.stores.find((s) => s._id === activation.storeId);
+
+  const products = (activation.productIds || [])
+    .map((id) => db.data.products.find((p) => p._id === id))
+    .filter(Boolean);
+
+  const user = db.data.users.find(
+    (u) => String(u.telegramId) === String(activation.telegramId),
+  );
+
   activation.redeemed = true;
   activation.redeemedAt = new Date().toISOString();
 
   await db.write();
 
-  const product = db.data.products.find((p) => p._id === activation.productId);
-
   res.json({
     success: true,
     activation,
-    product,
+    store,
+    products,
+    user,
   });
 });
 
@@ -602,3 +616,66 @@ if (!BOT_TOKEN) {
 
   console.log("🤖 Bot started");
 }
+
+app.post("/api/activate-store", async (req, res) => {
+  const { telegramId, storeId, productIds } = req.body;
+
+  if (!telegramId || !storeId || !productIds?.length) {
+    return res.status(400).json({ error: "Missing data" });
+  }
+
+  // проверяем товары
+  const products = db.data.products.filter((p) => productIds.includes(p._id));
+
+  if (!products.length) {
+    return res.status(404).json({ error: "Products not found" });
+  }
+
+  // проверяем что все товары из одного магазина
+  const invalid = products.find((p) => p.storeId !== storeId);
+  if (invalid) {
+    return res.status(400).json({ error: "Products must be from one store" });
+  }
+
+  // проверяем наличие
+  for (const p of products) {
+    if (p.remainingQuantity <= 0) {
+      return res.status(400).json({
+        error: `Product "${p.title}" is sold out`,
+      });
+    }
+  }
+
+  // уменьшаем количество
+  products.forEach((p) => {
+    p.remainingQuantity -= 1;
+  });
+
+  const activation = {
+    _id: Date.now().toString(),
+    telegramId,
+    storeId,
+    productIds,
+    activatedAt: Date.now(),
+    expiresAt: Date.now() + 1000 * 60 * 10,
+    redeemed: false,
+  };
+
+  db.data.activations.push(activation);
+  await db.write();
+
+  const qrPayload = JSON.stringify({
+    activationId: activation._id,
+    storeId,
+    telegramId,
+  });
+
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`;
+
+  res.json({
+    success: true,
+    qr,
+    qrPayload,
+    activation,
+  });
+});
