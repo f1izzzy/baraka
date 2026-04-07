@@ -544,7 +544,7 @@ async function loadMyDeals() {
   });
 }
 
-function renderBottomBar() {
+function updateBottomBar() {
   const bar = document.getElementById("bottomBar");
   const count = document.getElementById("selectedCount");
 
@@ -554,7 +554,7 @@ function renderBottomBar() {
   }
 
   bar.classList.remove("hidden");
-  count.textContent = `${selectedProducts.length} selected`;
+  count.textContent = `${selectedProducts.length} items`;
 }
 
 function startDealTimer(dealId, expiresAt) {
