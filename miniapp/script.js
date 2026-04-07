@@ -5,7 +5,8 @@ const initData = tg?.initData || "";
 const rawTelegramUser = tg?.initDataUnsafe?.user || null;
 let telegramUser = null;
 
-const API_BASE = "https://baraka-backend-71az.onrender.com";
+const API_BASE =
+  window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
 
 console.log("tg =", tg);
 console.log("rawTelegramUser =", rawTelegramUser);

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Baraka Admin</title>
+    <script src="config.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -229,10 +230,50 @@
     </div>
 
     <script>
-      const API_BASE = "https://baraka-backend-71az.onrender.com";
+      const API_BASE =
+        window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
+      const ADMIN_KEY_STORAGE = "baraka-admin-api-key";
 
       let storesCache = [];
       let productsCache = [];
+
+      function getAdminKey() {
+        let key = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
+
+        if (!key) {
+          key = prompt("Enter admin access key");
+          if (key) {
+            localStorage.setItem(ADMIN_KEY_STORAGE, key.trim());
+          }
+        }
+
+        return (key || "").trim();
+      }
+
+      async function apiFetch(path, options = {}) {
+        const adminKey = getAdminKey();
+
+        if (!adminKey) {
+          throw new Error("Admin key is required");
+        }
+
+        const headers = {
+          ...(options.headers || {}),
+          "x-api-key": adminKey,
+        };
+
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+        });
+
+        if (response.status === 401) {
+          localStorage.removeItem(ADMIN_KEY_STORAGE);
+          alert("Admin key is invalid. Enter it again.");
+        }
+
+        return response;
+      }
 
       async function saveStore() {
         const editId = document.getElementById("editStoreId").value;
@@ -247,13 +288,13 @@
         };
 
         if (editId) {
-          await fetch(`${API_BASE}/api/stores/${editId}`, {
+          await apiFetch(`/api/stores/${editId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
         } else {
-          await fetch(`${API_BASE}/api/stores`, {
+          await apiFetch("/api/stores", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -284,13 +325,13 @@
         };
 
         if (editId) {
-          await fetch(`${API_BASE}/api/products/${editId}`, {
+          await apiFetch(`/api/products/${editId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
         } else {
-          await fetch(`${API_BASE}/api/products`, {
+          await apiFetch("/api/products", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -448,14 +489,14 @@
       }
 
       async function deleteStore(id) {
-        await fetch(`${API_BASE}/api/stores/${id}`, {
+        await apiFetch(`/api/stores/${id}`, {
           method: "DELETE",
         });
         await loadAll();
       }
 
       async function deleteProduct(id) {
-        await fetch(`${API_BASE}/api/products/${id}`, {
+        await apiFetch(`/api/products/${id}`, {
           method: "DELETE",
         });
         await loadAll();

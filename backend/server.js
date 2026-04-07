@@ -2,12 +2,14 @@ const express = require("express");
 const cors = require("cors");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
-const TelegramBot = require("node-telegram-bot-api");
 const pool = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+const MERCHANT_API_KEY = process.env.MERCHANT_API_KEY || "";
 
 function makeId() {
   return crypto.randomUUID();
@@ -57,6 +59,36 @@ function mapUser(row) {
 function isFutureOrNull(date) {
   if (!date) return true;
   return new Date(date) > new Date();
+}
+
+function getApiKey(req) {
+  return req.headers["x-api-key"] || "";
+}
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_API_KEY) {
+    return res.status(500).json({ error: "ADMIN_API_KEY is not configured" });
+  }
+
+  if (getApiKey(req) !== ADMIN_API_KEY) {
+    return res.status(401).json({ error: "Admin access denied" });
+  }
+
+  next();
+}
+
+function requireMerchant(req, res, next) {
+  if (!MERCHANT_API_KEY) {
+    return res
+      .status(500)
+      .json({ error: "MERCHANT_API_KEY is not configured" });
+  }
+
+  if (getApiKey(req) !== MERCHANT_API_KEY) {
+    return res.status(401).json({ error: "Merchant access denied" });
+  }
+
+  next();
 }
 
 /* USERS */
@@ -165,7 +197,7 @@ app.get("/api/stores/:id", async (req, res) => {
   }
 });
 
-app.post("/api/stores", async (req, res) => {
+app.post("/api/stores", requireAdmin, async (req, res) => {
   try {
     const inserted = await pool.query(
       `
@@ -193,7 +225,7 @@ app.post("/api/stores", async (req, res) => {
   }
 });
 
-app.put("/api/stores/:id", async (req, res) => {
+app.put("/api/stores/:id", requireAdmin, async (req, res) => {
   try {
     const updated = await pool.query(
       `
@@ -230,7 +262,7 @@ app.put("/api/stores/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/stores/:id", async (req, res) => {
+app.delete("/api/stores/:id", requireAdmin, async (req, res) => {
   try {
     const deleted = await pool.query(
       `delete from stores where id = $1 returning *`,
@@ -253,7 +285,7 @@ app.delete("/api/stores/:id", async (req, res) => {
 
 /* PRODUCTS */
 
-app.post("/api/products", async (req, res) => {
+app.post("/api/products", requireAdmin, async (req, res) => {
   try {
     const storeCheck = await pool.query(
       `select id from stores where id = $1 limit 1`,
@@ -306,7 +338,7 @@ app.post("/api/products", async (req, res) => {
   }
 });
 
-app.put("/api/products/:id", async (req, res) => {
+app.put("/api/products/:id", requireAdmin, async (req, res) => {
   try {
     const currentRes = await pool.query(
       `select * from products where id = $1 limit 1`,
@@ -372,7 +404,7 @@ app.put("/api/products/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/products/:id", async (req, res) => {
+app.delete("/api/products/:id", requireAdmin, async (req, res) => {
   try {
     const deleted = await pool.query(
       `delete from products where id = $1 returning *`,
@@ -644,7 +676,7 @@ app.get("/api/my-deals/:telegramId", async (req, res) => {
 
 /* REDEEM */
 
-app.post("/api/redeem", async (req, res) => {
+app.post("/api/redeem", requireMerchant, async (req, res) => {
   try {
     const { activationId } = req.body;
 
@@ -717,7 +749,63 @@ app.post("/api/redeem", async (req, res) => {
   }
 });
 
-app.get("/api/activations", async (req, res) => {
+app.post("/api/activations/preview", requireMerchant, async (req, res) => {
+  try {
+    const { activationId } = req.body;
+
+    if (!activationId) {
+      return res.status(400).json({ error: "activationId is required" });
+    }
+
+    const activationRes = await pool.query(
+      `select * from activations where id = $1 limit 1`,
+      [activationId],
+    );
+
+    if (!activationRes.rows.length) {
+      return res.status(404).json({ error: "Activation not found" });
+    }
+
+    const activation = activationRes.rows[0];
+
+    const storeRes = await pool.query(
+      `select * from stores where id = $1 limit 1`,
+      [activation.store_id],
+    );
+
+    const productsRes = await pool.query(
+      `select * from products where id = any($1::text[])`,
+      [activation.product_ids || []],
+    );
+
+    const userRes = await pool.query(
+      `select * from users where telegram_id = $1 limit 1`,
+      [activation.telegram_id],
+    );
+
+    res.json({
+      success: true,
+      activation: {
+        _id: activation.id,
+        telegramId: activation.telegram_id,
+        storeId: activation.store_id,
+        productIds: activation.product_ids || [],
+        activatedAt: activation.activated_at,
+        expiresAt: activation.expires_at,
+        redeemed: activation.redeemed,
+        redeemedAt: activation.redeemed_at,
+      },
+      store: storeRes.rows[0] ? mapStore(storeRes.rows[0]) : null,
+      products: productsRes.rows.map(mapProduct),
+      user: userRes.rows[0] ? mapUser(userRes.rows[0]) : null,
+    });
+  } catch (err) {
+    console.error("activation preview error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/activations", requireMerchant, async (req, res) => {
   try {
     const result = await pool.query(
       `select * from activations order by activated_at desc`,
@@ -842,7 +930,7 @@ app.post("/api/auth/telegram", async (req, res) => {
 
 /* BOT */
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = "";
 
 if (!BOT_TOKEN) {
   console.log("❌ BOT_TOKEN not found");

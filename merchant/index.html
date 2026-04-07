@@ -8,6 +8,7 @@
       src="https://unpkg.com/html5-qrcode"
       type="text/javascript"
     ></script>
+    <script src="config.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -285,13 +286,53 @@
     </div>
 
     <script>
-      const API_BASE = "https://baraka-backend-71az.onrender.com";
+      const API_BASE =
+        window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
+      const MERCHANT_KEY_STORAGE = "baraka-merchant-api-key";
 
       let html5QrCode = null;
       let currentCameraId = null;
       let cameras = [];
       let pendingActivationId = null;
       let isProcessing = false;
+
+      function getMerchantKey() {
+        let key = localStorage.getItem(MERCHANT_KEY_STORAGE) || "";
+
+        if (!key) {
+          key = prompt("Enter merchant access key");
+          if (key) {
+            localStorage.setItem(MERCHANT_KEY_STORAGE, key.trim());
+          }
+        }
+
+        return (key || "").trim();
+      }
+
+      async function apiFetch(path, options = {}) {
+        const merchantKey = getMerchantKey();
+
+        if (!merchantKey) {
+          throw new Error("Merchant key is required");
+        }
+
+        const headers = {
+          ...(options.headers || {}),
+          "x-api-key": merchantKey,
+        };
+
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+        });
+
+        if (response.status === 401) {
+          localStorage.removeItem(MERCHANT_KEY_STORAGE);
+          setResult("scanResult", "Merchant key is invalid. Enter it again.", "error");
+        }
+
+        return response;
+      }
 
       function setResult(elId, message, type = "default") {
         const el = document.getElementById(elId);
@@ -344,7 +385,7 @@
 
           setResult(resultElId, "QR decoded. Review items below.", "success");
 
-          await loadActivationPreview(parsed.activationId);
+          await loadActivationPreviewSecure(parsed.activationId);
         } catch (e) {
           setResult(resultElId, "❌ Invalid QR payload", "error");
         }
@@ -378,6 +419,31 @@
         });
       }
 
+      async function loadActivationPreviewSecure(activationId) {
+        const res = await apiFetch("/api/activations/preview", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            activationId,
+          }),
+        });
+        const data = await res.json();
+
+        if (data.error || !data.activation) {
+          setResult("redeemResult", "вќЊ Activation not found", "error");
+          return;
+        }
+
+        fillRedeemBox({
+          activationId: data.activation._id,
+          telegramId: data.activation.telegramId,
+          storeId: data.store?.name || data.activation.storeId,
+          products: data.products || [],
+        });
+      }
+
       async function confirmRedeem() {
         if (!pendingActivationId || isProcessing) return;
 
@@ -385,7 +451,7 @@
           isProcessing = true;
           setResult("redeemResult", "Confirming redeem...", "loading");
 
-          const res = await fetch(`${API_BASE}/api/redeem`, {
+          const res = await apiFetch("/api/redeem", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
