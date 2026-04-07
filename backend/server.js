@@ -1,516 +1,750 @@
 const express = require("express");
 const cors = require("cors");
 const QRCode = require("qrcode");
-const { Low } = require("lowdb");
-const { JSONFile } = require("lowdb/node");
 const crypto = require("crypto");
-const path = require("path");
+const TelegramBot = require("node-telegram-bot-api");
+const pool = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const file = path.join(__dirname, "db.json");
-const adapter = new JSONFile(file);
-const db = new Low(adapter, {
-  stores: [],
-  products: [],
-  activations: [],
-  users: [],
-  favorites: [],
-});
-
 function makeId() {
   return crypto.randomUUID();
 }
 
-async function initDB() {
-  await db.read();
-  db.data ||= {
-    stores: [],
-    products: [],
-    activations: [],
-    users: [],
-    favorites: [],
+function mapStore(row) {
+  return {
+    _id: row.id,
+    name: row.name,
+    description: row.description,
+    location: row.location,
+    address: row.address,
+    coverImage: row.cover_image,
+    logo: row.logo,
+    createdAt: row.created_at,
   };
-  await db.write();
 }
 
-function isActive(product) {
-  if (!product.expirationDate) return true;
-  return new Date(product.expirationDate) > new Date();
+function mapProduct(row) {
+  return {
+    _id: row.id,
+    storeId: row.store_id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    price: Number(row.price),
+    oldPrice: Number(row.old_price),
+    image: row.image,
+    sizes: row.sizes || [],
+    remainingQuantity: row.remaining_quantity,
+    views: row.views,
+    expirationDate: row.expiration_date,
+    createdAt: row.created_at,
+  };
+}
+
+function mapUser(row) {
+  return {
+    _id: row.id,
+    telegramId: row.telegram_id,
+    firstName: row.first_name,
+    username: row.username,
+    createdAt: row.created_at,
+  };
+}
+
+function isFutureOrNull(date) {
+  if (!date) return true;
+  return new Date(date) > new Date();
 }
 
 /* USERS */
 
 app.post("/api/users/login", async (req, res) => {
-  await db.read();
+  try {
+    const { telegramId, firstName, username } = req.body;
 
-  const { telegramId, firstName, username } = req.body;
+    if (!telegramId) {
+      return res.status(400).json({ error: "telegramId is required" });
+    }
 
-  if (!telegramId) {
-    return res.status(400).json({ error: "telegramId is required" });
+    const existing = await pool.query(
+      `select * from users where telegram_id = $1 limit 1`,
+      [String(telegramId)],
+    );
+
+    if (existing.rows.length) {
+      return res.json(mapUser(existing.rows[0]));
+    }
+
+    const inserted = await pool.query(
+      `
+      insert into users (id, telegram_id, first_name, username)
+      values ($1, $2, $3, $4)
+      returning *
+      `,
+      [makeId(), String(telegramId), firstName || "", username || ""],
+    );
+
+    res.json(mapUser(inserted.rows[0]));
+  } catch (err) {
+    console.error("users/login error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  let user = db.data.users.find(
-    (u) => String(u.telegramId) === String(telegramId),
-  );
-
-  if (!user) {
-    user = {
-      _id: makeId(),
-      telegramId,
-      firstName: firstName || "",
-      username: username || "",
-      createdAt: new Date().toISOString(),
-    };
-
-    db.data.users.push(user);
-    await db.write();
-  }
-
-  res.json(user);
 });
 
 /* STORES */
 
 app.get("/api/stores", async (req, res) => {
-  await db.read();
+  try {
+    const result = await pool.query(`
+      select
+        s.*,
+        count(p.id) filter (
+          where p.expiration_date is null or p.expiration_date > now()
+        ) as product_count
+      from stores s
+      left join products p on p.store_id = s.id
+      group by s.id
+      order by s.created_at desc
+    `);
 
-  const stores = db.data.stores.map((store) => {
-    const products = db.data.products.filter(
-      (p) => p.storeId === store._id && isActive(p),
-    );
+    const stores = result.rows.map((row) => ({
+      ...mapStore(row),
+      productCount: Number(row.product_count || 0),
+    }));
 
-    return {
-      ...store,
-      productCount: products.length,
-    };
-  });
-
-  res.json(stores);
+    res.json(stores);
+  } catch (err) {
+    console.error("get stores error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.get("/api/stores/:id", async (req, res) => {
-  await db.read();
+  try {
+    const storeRes = await pool.query(
+      `select * from stores where id = $1 limit 1`,
+      [req.params.id],
+    );
 
-  const store = db.data.stores.find((s) => s._id === req.params.id);
+    if (!storeRes.rows.length) {
+      return res.status(404).json({ error: "Store not found" });
+    }
 
-  if (!store) {
-    return res.status(404).json({ error: "Store not found" });
+    let query = `
+      select * from products
+      where store_id = $1
+        and (expiration_date is null or expiration_date > now())
+      order by created_at desc
+    `;
+    let params = [req.params.id];
+
+    const { category } = req.query;
+    if (category && category !== "All") {
+      query = `
+        select * from products
+        where store_id = $1
+          and category = $2
+          and (expiration_date is null or expiration_date > now())
+        order by created_at desc
+      `;
+      params = [req.params.id, category];
+    }
+
+    const productsRes = await pool.query(query, params);
+
+    res.json({
+      store: mapStore(storeRes.rows[0]),
+      products: productsRes.rows.map(mapProduct),
+    });
+  } catch (err) {
+    console.error("get store by id error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  let products = db.data.products.filter(
-    (p) => p.storeId === store._id && isActive(p),
-  );
-
-  const { category } = req.query;
-  if (category && category !== "All") {
-    products = products.filter((p) => p.category === category);
-  }
-
-  res.json({
-    store,
-    products,
-  });
 });
 
 app.post("/api/stores", async (req, res) => {
-  await db.read();
+  try {
+    const inserted = await pool.query(
+      `
+      insert into stores (
+        id, name, description, location, address, cover_image, logo
+      )
+      values ($1, $2, $3, $4, $5, $6, $7)
+      returning *
+      `,
+      [
+        makeId(),
+        req.body.name || "",
+        req.body.description || "",
+        req.body.location || "",
+        req.body.address || "",
+        req.body.coverImage || "",
+        req.body.logo || "",
+      ],
+    );
 
-  const newStore = {
-    _id: makeId(),
-    name: req.body.name || "",
-    description: req.body.description || "",
-    location: req.body.location || "",
-    address: req.body.address || "",
-    coverImage: req.body.coverImage || "",
-    logo: req.body.logo || "",
-    createdAt: new Date().toISOString(),
-  };
-
-  db.data.stores.push(newStore);
-  await db.write();
-
-  res.json(newStore);
+    res.json(mapStore(inserted.rows[0]));
+  } catch (err) {
+    console.error("create store error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.put("/api/stores/:id", async (req, res) => {
-  await db.read();
+  try {
+    const updated = await pool.query(
+      `
+      update stores
+      set
+        name = coalesce($2, name),
+        description = coalesce($3, description),
+        location = coalesce($4, location),
+        address = coalesce($5, address),
+        cover_image = coalesce($6, cover_image),
+        logo = coalesce($7, logo)
+      where id = $1
+      returning *
+      `,
+      [
+        req.params.id,
+        req.body.name,
+        req.body.description,
+        req.body.location,
+        req.body.address,
+        req.body.coverImage,
+        req.body.logo,
+      ],
+    );
 
-  const store = db.data.stores.find((s) => s._id === req.params.id);
+    if (!updated.rows.length) {
+      return res.status(404).json({ error: "Store not found" });
+    }
 
-  if (!store) {
-    return res.status(404).json({ error: "Store not found" });
+    res.json(mapStore(updated.rows[0]));
+  } catch (err) {
+    console.error("update store error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  store.name = req.body.name ?? store.name;
-  store.description = req.body.description ?? store.description;
-  store.location = req.body.location ?? store.location;
-  store.address = req.body.address ?? store.address;
-  store.coverImage = req.body.coverImage ?? store.coverImage;
-  store.logo = req.body.logo ?? store.logo;
-
-  await db.write();
-  res.json(store);
 });
 
 app.delete("/api/stores/:id", async (req, res) => {
-  await db.read();
+  try {
+    const deleted = await pool.query(
+      `delete from stores where id = $1 returning *`,
+      [req.params.id],
+    );
 
-  const storeIndex = db.data.stores.findIndex((s) => s._id === req.params.id);
+    if (!deleted.rows.length) {
+      return res.status(404).json({ error: "Store not found" });
+    }
 
-  if (storeIndex === -1) {
-    return res.status(404).json({ error: "Store not found" });
+    res.json({
+      success: true,
+      deletedStore: mapStore(deleted.rows[0]),
+    });
+  } catch (err) {
+    console.error("delete store error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const deletedStore = db.data.stores.splice(storeIndex, 1)[0];
-  const deletedProductIds = db.data.products
-    .filter((p) => p.storeId === deletedStore._id)
-    .map((p) => p._id);
-
-  db.data.products = db.data.products.filter(
-    (p) => p.storeId !== deletedStore._id,
-  );
-
-  db.data.favorites = db.data.favorites.filter(
-    (f) => !deletedProductIds.includes(f.productId),
-  );
-
-  await db.write();
-
-  res.json({
-    success: true,
-    deletedStore,
-  });
 });
 
 /* PRODUCTS */
 
 app.post("/api/products", async (req, res) => {
-  await db.read();
+  try {
+    const storeCheck = await pool.query(
+      `select id from stores where id = $1 limit 1`,
+      [req.body.storeId],
+    );
 
-  const store = db.data.stores.find((s) => s._id === req.body.storeId);
+    if (!storeCheck.rows.length) {
+      return res.status(400).json({ error: "Store not found" });
+    }
 
-  if (!store) {
-    return res.status(400).json({ error: "Store not found" });
-  }
-
-  const sizes =
-    typeof req.body.sizes === "string"
-      ? req.body.sizes
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : Array.isArray(req.body.sizes)
-        ? req.body.sizes
-        : [];
-
-  const newProduct = {
-    _id: makeId(),
-    storeId: req.body.storeId,
-    title: req.body.title || "",
-    description: req.body.description || "",
-    category: req.body.category || "Other",
-    price: Number(req.body.price) || 0,
-    oldPrice: Number(req.body.oldPrice) || 0,
-    image: req.body.image || "",
-    sizes,
-    remainingQuantity: Number(req.body.remainingQuantity) || 0,
-    views: 0,
-    expirationDate: req.body.expirationDate || null,
-    createdAt: new Date().toISOString(),
-  };
-
-  db.data.products.push(newProduct);
-  await db.write();
-
-  res.json(newProduct);
-});
-
-app.put("/api/products/:id", async (req, res) => {
-  await db.read();
-
-  const product = db.data.products.find((p) => p._id === req.params.id);
-
-  if (!product) {
-    return res.status(404).json({ error: "Product not found" });
-  }
-
-  if (req.body.title !== undefined) product.title = req.body.title;
-  if (req.body.description !== undefined)
-    product.description = req.body.description;
-  if (req.body.category !== undefined) product.category = req.body.category;
-  if (req.body.price !== undefined) product.price = Number(req.body.price);
-  if (req.body.oldPrice !== undefined)
-    product.oldPrice = Number(req.body.oldPrice);
-  if (req.body.image !== undefined) product.image = req.body.image;
-  if (req.body.remainingQuantity !== undefined) {
-    product.remainingQuantity = Number(req.body.remainingQuantity);
-  }
-  if (req.body.expirationDate !== undefined) {
-    product.expirationDate = req.body.expirationDate;
-  }
-  if (req.body.sizes !== undefined) {
-    product.sizes =
+    const sizes =
       typeof req.body.sizes === "string"
         ? req.body.sizes
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean)
-        : req.body.sizes;
-  }
+        : Array.isArray(req.body.sizes)
+          ? req.body.sizes
+          : [];
 
-  await db.write();
-  res.json(product);
+    const inserted = await pool.query(
+      `
+      insert into products (
+        id, store_id, title, description, category, price, old_price, image,
+        sizes, remaining_quantity, views, expiration_date
+      )
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      returning *
+      `,
+      [
+        makeId(),
+        req.body.storeId,
+        req.body.title || "",
+        req.body.description || "",
+        req.body.category || "Other",
+        Number(req.body.price) || 0,
+        Number(req.body.oldPrice) || 0,
+        req.body.image || "",
+        sizes,
+        Number(req.body.remainingQuantity) || 0,
+        0,
+        req.body.expirationDate || null,
+      ],
+    );
+
+    res.json(mapProduct(inserted.rows[0]));
+  } catch (err) {
+    console.error("create product error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/api/products/:id", async (req, res) => {
+  try {
+    const currentRes = await pool.query(
+      `select * from products where id = $1 limit 1`,
+      [req.params.id],
+    );
+
+    if (!currentRes.rows.length) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const current = currentRes.rows[0];
+
+    const sizes =
+      req.body.sizes !== undefined
+        ? typeof req.body.sizes === "string"
+          ? req.body.sizes
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : req.body.sizes
+        : current.sizes;
+
+    const updated = await pool.query(
+      `
+      update products
+      set
+        title = $2,
+        description = $3,
+        category = $4,
+        price = $5,
+        old_price = $6,
+        image = $7,
+        sizes = $8,
+        remaining_quantity = $9,
+        expiration_date = $10
+      where id = $1
+      returning *
+      `,
+      [
+        req.params.id,
+        req.body.title ?? current.title,
+        req.body.description ?? current.description,
+        req.body.category ?? current.category,
+        req.body.price !== undefined ? Number(req.body.price) : current.price,
+        req.body.oldPrice !== undefined
+          ? Number(req.body.oldPrice)
+          : current.old_price,
+        req.body.image ?? current.image,
+        sizes,
+        req.body.remainingQuantity !== undefined
+          ? Number(req.body.remainingQuantity)
+          : current.remaining_quantity,
+        req.body.expirationDate !== undefined
+          ? req.body.expirationDate
+          : current.expiration_date,
+      ],
+    );
+
+    res.json(mapProduct(updated.rows[0]));
+  } catch (err) {
+    console.error("update product error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.delete("/api/products/:id", async (req, res) => {
-  await db.read();
+  try {
+    const deleted = await pool.query(
+      `delete from products where id = $1 returning *`,
+      [req.params.id],
+    );
 
-  const index = db.data.products.findIndex((p) => p._id === req.params.id);
+    if (!deleted.rows.length) {
+      return res.status(404).json({ error: "Product not found" });
+    }
 
-  if (index === -1) {
-    return res.status(404).json({ error: "Product not found" });
+    res.json({
+      success: true,
+      deleted: mapProduct(deleted.rows[0]),
+    });
+  } catch (err) {
+    console.error("delete product error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const deleted = db.data.products.splice(index, 1)[0];
-  db.data.favorites = db.data.favorites.filter(
-    (f) => f.productId !== deleted._id,
-  );
-
-  await db.write();
-
-  res.json({
-    success: true,
-    deleted,
-  });
 });
 
 app.post("/api/products/:id/view", async (req, res) => {
-  await db.read();
+  try {
+    const updated = await pool.query(
+      `
+      update products
+      set views = views + 1
+      where id = $1
+      returning views
+      `,
+      [req.params.id],
+    );
 
-  const product = db.data.products.find((p) => p._id === req.params.id);
+    if (!updated.rows.length) {
+      return res.status(404).json({ error: "Product not found" });
+    }
 
-  if (!product) {
-    return res.status(404).json({ error: "Product not found" });
+    res.json({
+      success: true,
+      views: updated.rows[0].views,
+    });
+  } catch (err) {
+    console.error("product view error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  product.views += 1;
-  await db.write();
-
-  res.json({
-    success: true,
-    views: product.views,
-  });
 });
 
 /* FAVORITES */
 
 app.get("/api/favorites/:telegramId", async (req, res) => {
-  await db.read();
+  try {
+    const result = await pool.query(
+      `
+      select p.*
+      from favorites f
+      join products p on p.id = f.product_id
+      where f.telegram_id = $1
+        and (p.expiration_date is null or p.expiration_date > now())
+      order by f.created_at desc
+      `,
+      [String(req.params.telegramId)],
+    );
 
-  const { telegramId } = req.params;
-
-  const favoriteRows = db.data.favorites.filter(
-    (f) => String(f.telegramId) === String(telegramId),
-  );
-
-  const products = favoriteRows
-    .map((fav) => db.data.products.find((p) => p._id === fav.productId))
-    .filter(Boolean)
-    .filter(isActive);
-
-  res.json(products);
+    res.json(result.rows.map(mapProduct));
+  } catch (err) {
+    console.error("get favorites error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.post("/api/favorites/toggle", async (req, res) => {
-  await db.read();
+  try {
+    const { telegramId, productId } = req.body;
 
-  const { telegramId, productId } = req.body;
+    if (!telegramId || !productId) {
+      return res
+        .status(400)
+        .json({ error: "telegramId and productId are required" });
+    }
 
-  if (!telegramId || !productId) {
-    return res
-      .status(400)
-      .json({ error: "telegramId and productId are required" });
+    const existing = await pool.query(
+      `
+      select * from favorites
+      where telegram_id = $1 and product_id = $2
+      limit 1
+      `,
+      [String(telegramId), String(productId)],
+    );
+
+    if (existing.rows.length) {
+      await pool.query(
+        `delete from favorites where telegram_id = $1 and product_id = $2`,
+        [String(telegramId), String(productId)],
+      );
+      return res.json({ success: true, isFavorite: false });
+    }
+
+    await pool.query(
+      `
+      insert into favorites (id, telegram_id, product_id)
+      values ($1, $2, $3)
+      `,
+      [makeId(), String(telegramId), String(productId)],
+    );
+
+    res.json({ success: true, isFavorite: true });
+  } catch (err) {
+    console.error("toggle favorite error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const existingIndex = db.data.favorites.findIndex(
-    (f) =>
-      String(f.telegramId) === String(telegramId) &&
-      String(f.productId) === String(productId),
-  );
-
-  if (existingIndex !== -1) {
-    db.data.favorites.splice(existingIndex, 1);
-    await db.write();
-    return res.json({ success: true, isFavorite: false });
-  }
-
-  db.data.favorites.push({
-    _id: makeId(),
-    telegramId,
-    productId,
-    createdAt: new Date().toISOString(),
-  });
-
-  await db.write();
-
-  res.json({ success: true, isFavorite: true });
 });
 
-/* ACTIVATIONS */
+/* STORE ACTIVATION */
 
-app.post("/api/activate", async (req, res) => {
-  await db.read();
+app.post("/api/activate-store", async (req, res) => {
+  const client = await pool.connect();
 
-  const { productId, telegramId } = req.body;
+  try {
+    const { telegramId, storeId, productIds } = req.body;
 
-  const product = db.data.products.find((p) => p._id === productId);
+    if (!telegramId || !storeId || !productIds?.length) {
+      return res.status(400).json({ error: "Missing data" });
+    }
 
-  if (!product) {
-    return res.status(404).json({ error: "Product not found" });
-  }
+    await client.query("begin");
 
-  if (!telegramId) {
-    return res.status(400).json({ error: "Telegram user is required" });
-  }
+    const productsRes = await client.query(
+      `select * from products where id = any($1::text[])`,
+      [productIds],
+    );
 
-  const alreadyActivated = db.data.activations.find(
-    (a) =>
-      a.productId === productId && String(a.telegramId) === String(telegramId),
-  );
+    const products = productsRes.rows;
 
-  if (alreadyActivated) {
-    return res
-      .status(400)
-      .json({ error: "You already activated this product" });
-  }
+    if (!products.length) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Products not found" });
+    }
 
-  if (product.remainingQuantity <= 0) {
-    return res.status(400).json({ error: "Sold out" });
-  }
+    const invalid = products.find((p) => p.store_id !== storeId);
+    if (invalid) {
+      await client.query("rollback");
+      return res.status(400).json({ error: "Products must be from one store" });
+    }
 
-  product.remainingQuantity -= 1;
+    for (const p of products) {
+      if (!isFutureOrNull(p.expiration_date)) {
+        await client.query("rollback");
+        return res.status(400).json({ error: `Product "${p.title}" expired` });
+      }
 
-  const activation = {
-    _id: makeId(),
-    productId,
-    telegramId,
-    activatedAt: new Date().toISOString(),
-    expiresAt: Date.now() + 5 * 60 * 1000,
-    redeemed: false,
-  };
+      if (p.remaining_quantity <= 0) {
+        await client.query("rollback");
+        return res
+          .status(400)
+          .json({ error: `Product "${p.title}" is sold out` });
+      }
+    }
 
-  db.data.activations.push(activation);
-  await db.write();
+    for (const p of products) {
+      await client.query(
+        `
+        update products
+        set remaining_quantity = remaining_quantity - 1
+        where id = $1
+        `,
+        [p.id],
+      );
+    }
 
-  const qrPayload = JSON.stringify({
-    activationId: activation._id,
-    productId: product._id,
-    telegramId,
-  });
+    const activationId = makeId();
+    const activatedAt = new Date();
+    const expiresAt = Date.now() + 1000 * 60 * 10;
 
-  const qr = await QRCode.toDataURL(qrPayload);
+    await client.query(
+      `
+      insert into activations (
+        id, telegram_id, store_id, product_ids, activated_at, expires_at, redeemed
+      )
+      values ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        activationId,
+        String(telegramId),
+        String(storeId),
+        productIds,
+        activatedAt.toISOString(),
+        expiresAt,
+        false,
+      ],
+    );
 
-  res.json({
-    success: true,
-    qr,
-    qrPayload,
-    activation,
-    remainingQuantity: product.remainingQuantity,
-  });
-});
+    await client.query("commit");
 
-app.get("/api/my-deals/:telegramId", async (req, res) => {
-  await db.read();
-
-  const { telegramId } = req.params;
-
-  const userActivations = db.data.activations
-    .filter((a) => String(a.telegramId) === String(telegramId))
-    .map((a) => {
-      const store = db.data.stores.find((s) => s._id === a.storeId);
-
-      const products = (a.productIds || [])
-        .map((id) => db.data.products.find((p) => p._id === id))
-        .filter(Boolean);
-
-      return {
-        ...a,
-        store,
-        products,
-      };
+    const qrPayload = JSON.stringify({
+      activationId,
+      storeId,
+      telegramId: String(telegramId),
     });
 
-  res.json(userActivations);
+    const qr = await QRCode.toDataURL(qrPayload);
+
+    res.json({
+      success: true,
+      qr,
+      qrPayload,
+      activation: {
+        _id: activationId,
+        telegramId: String(telegramId),
+        storeId: String(storeId),
+        productIds,
+        activatedAt: activatedAt.toISOString(),
+        expiresAt,
+        redeemed: false,
+      },
+    });
+  } catch (err) {
+    await client.query("rollback");
+    console.error("activate-store error:", err);
+    res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
+  }
 });
 
+/* MY DEALS */
+
+app.get("/api/my-deals/:telegramId", async (req, res) => {
+  try {
+    const activationsRes = await pool.query(
+      `
+      select * from activations
+      where telegram_id = $1
+      order by activated_at desc
+      `,
+      [String(req.params.telegramId)],
+    );
+
+    const items = [];
+    for (const a of activationsRes.rows) {
+      const storeRes = await pool.query(
+        `select * from stores where id = $1 limit 1`,
+        [a.store_id],
+      );
+
+      const productsRes = await pool.query(
+        `select * from products where id = any($1::text[])`,
+        [a.product_ids || []],
+      );
+
+      items.push({
+        _id: a.id,
+        telegramId: a.telegram_id,
+        storeId: a.store_id,
+        productIds: a.product_ids || [],
+        activatedAt: a.activated_at,
+        expiresAt: a.expires_at,
+        redeemed: a.redeemed,
+        redeemedAt: a.redeemed_at,
+        store: storeRes.rows[0] ? mapStore(storeRes.rows[0]) : null,
+        products: productsRes.rows.map(mapProduct),
+      });
+    }
+
+    res.json(items);
+  } catch (err) {
+    console.error("my-deals error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* REDEEM */
+
 app.post("/api/redeem", async (req, res) => {
-  await db.read();
+  try {
+    const { activationId } = req.body;
 
-  const { activationId } = req.body;
+    if (!activationId) {
+      return res.status(400).json({ error: "activationId is required" });
+    }
 
-  if (!activationId) {
-    return res.status(400).json({ error: "activationId is required" });
+    const activationRes = await pool.query(
+      `select * from activations where id = $1 limit 1`,
+      [activationId],
+    );
+
+    if (!activationRes.rows.length) {
+      return res.status(404).json({ error: "Activation not found" });
+    }
+
+    const activation = activationRes.rows[0];
+
+    if (Date.now() > Number(activation.expires_at)) {
+      return res.status(400).json({ error: "QR expired" });
+    }
+
+    if (activation.redeemed) {
+      return res.status(400).json({ error: "QR already used" });
+    }
+
+    await pool.query(
+      `
+      update activations
+      set redeemed = true, redeemed_at = now()
+      where id = $1
+      `,
+      [activationId],
+    );
+
+    const storeRes = await pool.query(
+      `select * from stores where id = $1 limit 1`,
+      [activation.store_id],
+    );
+
+    const productsRes = await pool.query(
+      `select * from products where id = any($1::text[])`,
+      [activation.product_ids || []],
+    );
+
+    const userRes = await pool.query(
+      `select * from users where telegram_id = $1 limit 1`,
+      [activation.telegram_id],
+    );
+
+    res.json({
+      success: true,
+      activation: {
+        _id: activation.id,
+        telegramId: activation.telegram_id,
+        storeId: activation.store_id,
+        productIds: activation.product_ids || [],
+        activatedAt: activation.activated_at,
+        expiresAt: activation.expires_at,
+        redeemed: true,
+        redeemedAt: new Date().toISOString(),
+      },
+      store: storeRes.rows[0] ? mapStore(storeRes.rows[0]) : null,
+      products: productsRes.rows.map(mapProduct),
+      user: userRes.rows[0] ? mapUser(userRes.rows[0]) : null,
+    });
+  } catch (err) {
+    console.error("redeem error:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const activation = db.data.activations.find((a) => a._id === activationId);
-
-  if (!activation) {
-    return res.status(404).json({ error: "Activation not found" });
-  }
-
-  if (Date.now() > activation.expiresAt) {
-    return res.status(400).json({ error: "QR expired" });
-  }
-
-  if (activation.redeemed) {
-    return res.status(400).json({ error: "QR already used" });
-  }
-
-  const store = db.data.stores.find((s) => s._id === activation.storeId);
-
-  const products = (activation.productIds || [])
-    .map((id) => db.data.products.find((p) => p._id === id))
-    .filter(Boolean);
-
-  const user = db.data.users.find(
-    (u) => String(u.telegramId) === String(activation.telegramId),
-  );
-
-  activation.redeemed = true;
-  activation.redeemedAt = new Date().toISOString();
-
-  await db.write();
-
-  res.json({
-    success: true,
-    activation,
-    store,
-    products,
-    user,
-  });
 });
 
 app.get("/api/activations", async (req, res) => {
-  await db.read();
-  res.json(db.data.activations);
+  try {
+    const result = await pool.query(
+      `select * from activations order by activated_at desc`,
+    );
+
+    res.json(
+      result.rows.map((a) => ({
+        _id: a.id,
+        telegramId: a.telegram_id,
+        storeId: a.store_id,
+        productIds: a.product_ids || [],
+        activatedAt: a.activated_at,
+        expiresAt: a.expires_at,
+        redeemed: a.redeemed,
+        redeemedAt: a.redeemed_at,
+      })),
+    );
+  } catch (err) {
+    console.error("activations error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-const PORT = process.env.PORT || 5000;
+/* TELEGRAM AUTH */
 
-initDB().then(() => {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`API running on port ${PORT}`);
-  });
-});
-
-// TELEGRAM AUTH
 app.post("/api/auth/telegram", async (req, res) => {
   try {
-    await db.read();
-
     const { initData } = req.body;
 
     if (!initData) {
@@ -557,30 +791,48 @@ app.post("/api/auth/telegram", async (req, res) => {
 
     const userData = JSON.parse(userRaw);
 
-    let user = db.data.users.find(
-      (u) => String(u.telegramId) === String(userData.id),
+    const existing = await pool.query(
+      `select * from users where telegram_id = $1 limit 1`,
+      [String(userData.id)],
     );
 
-    if (!user) {
-      user = {
-        _id: makeId(),
-        telegramId: userData.id,
-        firstName: userData.first_name || "",
-        username: userData.username || "",
-        createdAt: new Date().toISOString(),
-      };
+    let user;
 
-      db.data.users.push(user);
+    if (!existing.rows.length) {
+      const inserted = await pool.query(
+        `
+        insert into users (id, telegram_id, first_name, username)
+        values ($1, $2, $3, $4)
+        returning *
+        `,
+        [
+          makeId(),
+          String(userData.id),
+          userData.first_name || "",
+          userData.username || "",
+        ],
+      );
+      user = inserted.rows[0];
     } else {
-      user.firstName = userData.first_name || user.firstName || "";
-      user.username = userData.username || user.username || "";
+      const updated = await pool.query(
+        `
+        update users
+        set first_name = $2, username = $3
+        where telegram_id = $1
+        returning *
+        `,
+        [
+          String(userData.id),
+          userData.first_name || "",
+          userData.username || "",
+        ],
+      );
+      user = updated.rows[0];
     }
-
-    await db.write();
 
     res.json({
       success: true,
-      user,
+      user: mapUser(user),
     });
   } catch (err) {
     console.error("Telegram auth error:", err);
@@ -588,7 +840,7 @@ app.post("/api/auth/telegram", async (req, res) => {
   }
 });
 
-const TelegramBot = require("node-telegram-bot-api");
+/* BOT */
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -605,7 +857,7 @@ if (!BOT_TOKEN) {
             {
               text: "Open Baraka",
               web_app: {
-                url: "https://baraka-miniapp.vercel.app",
+                url: "  ",
               },
             },
           ],
@@ -617,65 +869,8 @@ if (!BOT_TOKEN) {
   console.log("🤖 Bot started");
 }
 
-app.post("/api/activate-store", async (req, res) => {
-  const { telegramId, storeId, productIds } = req.body;
+const PORT = process.env.PORT || 5000;
 
-  if (!telegramId || !storeId || !productIds?.length) {
-    return res.status(400).json({ error: "Missing data" });
-  }
-
-  // проверяем товары
-  const products = db.data.products.filter((p) => productIds.includes(p._id));
-
-  if (!products.length) {
-    return res.status(404).json({ error: "Products not found" });
-  }
-
-  // проверяем что все товары из одного магазина
-  const invalid = products.find((p) => p.storeId !== storeId);
-  if (invalid) {
-    return res.status(400).json({ error: "Products must be from one store" });
-  }
-
-  // проверяем наличие
-  for (const p of products) {
-    if (p.remainingQuantity <= 0) {
-      return res.status(400).json({
-        error: `Product "${p.title}" is sold out`,
-      });
-    }
-  }
-
-  // уменьшаем количество
-  products.forEach((p) => {
-    p.remainingQuantity -= 1;
-  });
-
-  const activation = {
-    _id: Date.now().toString(),
-    telegramId,
-    storeId,
-    productIds,
-    activatedAt: Date.now(),
-    expiresAt: Date.now() + 1000 * 60 * 10,
-    redeemed: false,
-  };
-
-  db.data.activations.push(activation);
-  await db.write();
-
-  const qrPayload = JSON.stringify({
-    activationId: activation._id,
-    storeId,
-    telegramId,
-  });
-
-  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`;
-
-  res.json({
-    success: true,
-    qr,
-    qrPayload,
-    activation,
-  });
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`API running on port ${PORT}`);
 });
