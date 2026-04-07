@@ -847,26 +847,37 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
   console.log("❌ BOT_TOKEN not found");
 } else {
-  const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+  const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-  bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "Open Baraka", {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "Open Baraka",
-              web_app: {
-                url: "  ",
-              },
-            },
-          ],
-        ],
-      },
-    });
-  });
+  async function startBot() {
+    try {
+      await bot.deleteWebHook();
+      await bot.startPolling();
 
-  console.log("🤖 Bot started");
+      bot.onText(/\/start/, (msg) => {
+        bot.sendMessage(msg.chat.id, "Open Baraka", {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Open Baraka",
+                  web_app: {
+                    url: "https://baraka-miniapp.vercel.app",
+                  },
+                },
+              ],
+            ],
+          },
+        });
+      });
+
+      console.log("🤖 Bot started");
+    } catch (err) {
+      console.error("Bot start error:", err.message);
+    }
+  }
+
+  startBot();
 }
 
 const PORT = process.env.PORT || 5000;
