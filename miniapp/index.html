@@ -77,11 +77,12 @@
     <div id="toast"></div>
 
     <div id="bottomBar" class="bottom-bar hidden">
-      <div>
-        <div class="bar-title">Selected</div>
-        <div id="selectedCount">0 items</div>
+      <div class="bottom-bar-left">
+        <div class="bottom-bar-label">Selected items</div>
+        <div class="bottom-bar-count" id="selectedCount">0 items</div>
       </div>
-      <button onclick="activateStore()">Activate</button>
+
+      <button class="bottom-bar-btn" onclick="activateStore()">Activate</button>
     </div>
 
     <script src="script.js"></script>

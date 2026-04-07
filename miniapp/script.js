@@ -270,7 +270,7 @@ function renderProducts(products) {
       .map((size) => `<span class="size-chip">${size}</span>`)
       .join("");
 
-    const isFav = favoriteIds.includes(product._id);
+    const isSelected = selectedProducts.includes(product._id);
 
     const card = document.createElement("div");
     card.className = "product-card";
@@ -294,7 +294,12 @@ function renderProducts(products) {
         </div>
         <div class="card-actions">
           <button class="icon-btn ${isFav ? "active" : ""}" onclick="toggleFavorite('${product._id}', this)">♥</button>
-          <button class="main-btn" onclick="toggleSelect('${product._id}', this)">Add</button>
+          <button
+  class="main-btn ${isSelected ? "selected-product-btn" : ""}"
+  onclick="toggleSelect('${product._id}', this)"
+>
+  ${isSelected ? "Added" : "Add"}
+</button>
         </div>
       </div>
     `;
@@ -307,14 +312,14 @@ function toggleSelect(productId, btn) {
   if (selectedProducts.includes(productId)) {
     selectedProducts = selectedProducts.filter((id) => id !== productId);
     btn.textContent = "Add";
-    btn.style.background = "";
+    btn.classList.remove("selected-product-btn");
   } else {
     selectedProducts.push(productId);
     btn.textContent = "Added";
-    btn.style.background = "#00c853";
+    btn.classList.add("selected-product-btn");
   }
 
-  renderBottomBar();
+  updateBottomBar();
 }
 
 function renderBottomBar() {
@@ -360,7 +365,7 @@ async function activateStore() {
   openModal(data.qr, data.qrPayload, data.activation.expiresAt);
 
   selectedProducts = [];
-  renderBottomBar();
+  updateBottomBar();
   loadMyDeals();
 }
 
@@ -469,6 +474,47 @@ function formatRemaining(ms) {
   return `${min}m ${sec}s left`;
 }
 
+function getDealStatus(deal) {
+  if (deal.redeemed) return "used";
+  if (Date.now() > Number(deal.expiresAt)) return "expired";
+  return "active";
+}
+
+function formatDealTimeLeft(expiresAt) {
+  const diff = Number(expiresAt) - Date.now();
+
+  if (diff <= 0) return "Expired";
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}m ${seconds}s left`;
+}
+
+function startMyDealTimer(dealId, expiresAt) {
+  const el = document.getElementById(`deal-timer-${dealId}`);
+  if (!el) return;
+
+  const interval = setInterval(() => {
+    const diff = Number(expiresAt) - Date.now();
+
+    if (diff <= 0) {
+      el.textContent = "Expired";
+      clearInterval(interval);
+
+      const badge = document.getElementById(`deal-badge-${dealId}`);
+      if (badge) {
+        badge.textContent = "Expired";
+        badge.className = "status-badge expired";
+      }
+      return;
+    }
+
+    el.textContent = formatDealTimeLeft(expiresAt);
+  }, 1000);
+}
+
 async function loadMyDeals() {
   const container = document.getElementById("myDeals");
   const telegramId = getTelegramId();
@@ -480,73 +526,91 @@ async function loadMyDeals() {
 
   renderSkeleton("myDeals", 2);
 
-  const res = await fetch(`${API_BASE}/api/my-deals/${telegramId}`);
-  const deals = await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/my-deals/${telegramId}`);
+    const deals = await res.json();
 
-  myDealsCache = deals;
-  container.innerHTML = "";
+    myDealsCache = deals;
+    container.innerHTML = "";
 
-  if (!deals.length) {
-    container.innerHTML = `<div class="empty-box">You have no activated deals yet.</div>`;
-    return;
-  }
-
-  deals.forEach((item) => {
-    const status = item.redeemed
-      ? "used"
-      : Date.now() > item.expiresAt
-        ? "expired"
-        : "pending";
-
-    const badgeText =
-      status === "used" ? "Used" : status === "expired" ? "Expired" : "Active";
-
-    const productsHtml = (item.products || [])
-      .map(
-        (p) => `
-          <div class="deal-product-row">
-            <span>${p.title}</span>
-            <span>$${p.price}</span>
-          </div>
-        `,
-      )
-      .join("");
-
-    const card = document.createElement("div");
-    card.className = "deal-card";
-
-    card.innerHTML = `
-      <div class="deal-content">
-        <div class="status-badge ${status}">${badgeText}</div>
-        <div class="deal-title">${item.store?.name || "Store"}</div>
-        <div class="deal-sub">${(item.products || []).length} items selected</div>
-        <div class="deal-meta">
-          <span>Activated</span>
-          <span>${new Date(item.activatedAt).toLocaleDateString()}</span>
-        </div>
-        <div class="deal-products">${productsHtml}</div>
-        <div class="timer-text" id="timer_${item._id}">
-          ${status === "pending" ? formatRemaining(item.expiresAt - Date.now()) : badgeText}
-        </div>
-        ${
-          status === "pending"
-            ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${item._id}')">Show QR again</button>`
-            : ""
-        }
-      </div>
-    `;
-
-    container.appendChild(card);
-
-    if (status === "pending") {
-      startDealTimer(item._id, item.expiresAt);
+    if (!deals.length) {
+      container.innerHTML = `<div class="empty-box">No deals yet</div>`;
+      return;
     }
-  });
+
+    deals.forEach((deal) => {
+      const status = getDealStatus(deal);
+
+      const badgeText =
+        status === "used"
+          ? "Used"
+          : status === "expired"
+            ? "Expired"
+            : "Active";
+
+      const productsHtml = (deal.products || []).length
+        ? deal.products
+            .map(
+              (p) => `
+            <div class="deal-product">
+              <span>${p.title}</span>
+              <span>$${p.price}</span>
+            </div>
+          `,
+            )
+            .join("")
+        : `<div class="deal-product-empty">No products found</div>`;
+
+      const card = document.createElement("div");
+      card.className = "deal-card";
+
+      card.innerHTML = `
+        <div class="deal-content">
+          <div class="status-badge ${status}" id="deal-badge-${deal._id}">
+            ${badgeText}
+          </div>
+
+          <div class="deal-title">${deal.store?.name || "Store"}</div>
+          <div class="deal-sub">${(deal.products || []).length} items selected</div>
+
+          <div class="deal-meta">
+            <span>Activated</span>
+            <span>${new Date(deal.activatedAt).toLocaleDateString()}</span>
+          </div>
+
+          <div class="deal-products">
+            ${productsHtml}
+          </div>
+
+          <div class="deal-timer" id="deal-timer-${deal._id}">
+            ${status === "active" ? formatDealTimeLeft(deal.expiresAt) : badgeText}
+          </div>
+
+          ${
+            status === "active"
+              ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${deal._id}')">Show QR again</button>`
+              : ""
+          }
+        </div>
+      `;
+
+      container.appendChild(card);
+
+      if (status === "active") {
+        startMyDealTimer(deal._id, deal.expiresAt);
+      }
+    });
+  } catch (err) {
+    console.error("loadMyDeals error:", err);
+    container.innerHTML = `<div class="empty-box">Failed to load deals</div>`;
+  }
 }
 
 function updateBottomBar() {
   const bar = document.getElementById("bottomBar");
   const count = document.getElementById("selectedCount");
+
+  if (!bar || !count) return;
 
   if (!selectedProducts.length) {
     bar.classList.add("hidden");
@@ -554,7 +618,7 @@ function updateBottomBar() {
   }
 
   bar.classList.remove("hidden");
-  count.textContent = `${selectedProducts.length} items`;
+  count.textContent = `${selectedProducts.length} item${selectedProducts.length > 1 ? "s" : ""}`;
 }
 
 function startDealTimer(dealId, expiresAt) {
@@ -628,7 +692,7 @@ async function showSavedQr(dealId) {
 
   const qrPayload = JSON.stringify({
     activationId: deal._id,
-    productId: deal.product._id,
+    storeId: deal.storeId,
     telegramId: deal.telegramId,
   });
 
