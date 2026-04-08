@@ -116,6 +116,7 @@
         min-height: 280px;
       }
 
+      input,
       textarea {
         width: 100%;
         min-height: 110px;
@@ -126,6 +127,10 @@
         resize: vertical;
         background: rgba(255, 255, 255, 0.85);
         outline: none;
+      }
+
+      input {
+        min-height: auto;
       }
 
       .btn-row {
@@ -214,6 +219,10 @@
         font-size: 13px;
       }
 
+      .hidden {
+        display: none;
+      }
+
       @media (max-width: 480px) {
         .btn-row {
           flex-direction: column;
@@ -230,6 +239,37 @@
       </p>
 
       <div class="card">
+        <h2 class="card-title">Merchant Login</h2>
+        <p class="card-subtitle">
+          Login with the account created for your store.
+        </p>
+
+        <div id="merchantSessionBox" class="hidden">
+          <div class="info-line">
+            <strong>Store:</strong> <span id="merchantSessionStore">-</span>
+          </div>
+          <div class="info-line">
+            <strong>Login:</strong> <span id="merchantSessionLogin">-</span>
+          </div>
+          <div class="btn-row">
+            <button class="secondary-btn" onclick="logoutMerchant()">
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div id="merchantLoginForm">
+          <input id="merchantLogin" placeholder="Store login" />
+          <input id="merchantPassword" placeholder="Password" type="password" />
+          <div class="btn-row">
+            <button onclick="loginMerchant()">Login</button>
+          </div>
+        </div>
+
+        <div class="result" id="merchantAuthResult">Waiting for login.</div>
+      </div>
+
+      <div class="card auth-only hidden">
         <h2 class="card-title">Scanner</h2>
         <p class="card-subtitle">
           Use the back camera to scan the customer QR.
@@ -244,7 +284,7 @@
         <div class="result" id="scanResult">Ready to scan.</div>
       </div>
 
-      <div class="card">
+      <div class="card auth-only hidden">
         <h2 class="card-title">Manual payload</h2>
         <p class="card-subtitle">Paste QR payload if camera is unavailable.</p>
 
@@ -261,7 +301,7 @@
         <div class="result" id="manualResult">Waiting for input.</div>
       </div>
 
-      <div class="card redeem-box" id="redeemBox">
+      <div class="card redeem-box auth-only hidden" id="redeemBox">
         <h2 class="card-title">Redeem details</h2>
 
         <div class="info-line">
@@ -288,37 +328,114 @@
     <script>
       const API_BASE =
         window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
-      const MERCHANT_KEY_STORAGE = "baraka-merchant-api-key";
+      const MERCHANT_TOKEN_STORAGE = "baraka-merchant-token";
+      const MERCHANT_INFO_STORAGE = "baraka-merchant-info";
 
       let html5QrCode = null;
       let currentCameraId = null;
       let cameras = [];
       let pendingActivationId = null;
       let isProcessing = false;
+      let merchantSession = null;
+      let cameraInitialized = false;
 
-      function getMerchantKey() {
-        let key = localStorage.getItem(MERCHANT_KEY_STORAGE) || "";
+      function getMerchantToken() {
+        return localStorage.getItem(MERCHANT_TOKEN_STORAGE) || "";
+      }
 
-        if (!key) {
-          key = prompt("Enter merchant access key");
-          if (key) {
-            localStorage.setItem(MERCHANT_KEY_STORAGE, key.trim());
-          }
+      function setMerchantSession(data) {
+        merchantSession = data?.merchant || null;
+
+        if (data?.token && data?.merchant) {
+          localStorage.setItem(MERCHANT_TOKEN_STORAGE, data.token);
+          localStorage.setItem(MERCHANT_INFO_STORAGE, JSON.stringify(data.merchant));
         }
 
-        return (key || "").trim();
+        const loggedIn = Boolean(merchantSession);
+        document
+          .querySelectorAll(".auth-only")
+          .forEach((el) => el.classList.toggle("hidden", !loggedIn));
+        document
+          .getElementById("merchantSessionBox")
+          .classList.toggle("hidden", !loggedIn);
+        document
+          .getElementById("merchantLoginForm")
+          .classList.toggle("hidden", loggedIn);
+
+        document.getElementById("merchantSessionStore").textContent =
+          merchantSession?.storeName || "-";
+        document.getElementById("merchantSessionLogin").textContent =
+          merchantSession?.login || "-";
+
+        if (loggedIn) {
+          setResult("merchantAuthResult", "Merchant logged in.", "success");
+          if (!cameraInitialized) {
+            cameraInitialized = true;
+            initCamera();
+          }
+        } else {
+          setResult("merchantAuthResult", "Waiting for login.", "default");
+          resetRedeemBox();
+        }
+      }
+
+      function restoreMerchantSession() {
+        try {
+          const raw = localStorage.getItem(MERCHANT_INFO_STORAGE);
+          if (!raw || !getMerchantToken()) return;
+          setMerchantSession({ merchant: JSON.parse(raw) });
+        } catch {
+          logoutMerchant();
+        }
+      }
+
+      function logoutMerchant() {
+        localStorage.removeItem(MERCHANT_TOKEN_STORAGE);
+        localStorage.removeItem(MERCHANT_INFO_STORAGE);
+        merchantSession = null;
+        setMerchantSession(null);
+      }
+
+      async function loginMerchant() {
+        const login = document.getElementById("merchantLogin").value.trim();
+        const password = document.getElementById("merchantPassword").value.trim();
+
+        if (!login || !password) {
+          setResult("merchantAuthResult", "Login and password are required.", "error");
+          return;
+        }
+
+        setResult("merchantAuthResult", "Logging in...", "loading");
+
+        const response = await fetch(`${API_BASE}/api/merchant/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ login, password }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          setResult("merchantAuthResult", data.error || "Login failed", "error");
+          return;
+        }
+
+        document.getElementById("merchantPassword").value = "";
+        setMerchantSession(data);
       }
 
       async function apiFetch(path, options = {}) {
-        const merchantKey = getMerchantKey();
+        const merchantToken = getMerchantToken();
 
-        if (!merchantKey) {
-          throw new Error("Merchant key is required");
+        if (!merchantToken) {
+          throw new Error("Merchant login is required");
         }
 
         const headers = {
           ...(options.headers || {}),
-          "x-api-key": merchantKey,
+          Authorization: `Bearer ${merchantToken}`,
         };
 
         const response = await fetch(`${API_BASE}${path}`, {
@@ -327,8 +444,8 @@
         });
 
         if (response.status === 401) {
-          localStorage.removeItem(MERCHANT_KEY_STORAGE);
-          setResult("scanResult", "Merchant key is invalid. Enter it again.", "error");
+          logoutMerchant();
+          setResult("merchantAuthResult", "Session expired. Login again.", "error");
         }
 
         return response;
@@ -598,7 +715,7 @@
         }
       });
 
-      initCamera();
+      restoreMerchantSession();
     </script>
   </body>
 </html>

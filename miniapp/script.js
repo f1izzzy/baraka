@@ -391,19 +391,6 @@ function toggleSelect(productId, btn) {
   updateBottomBar();
 }
 
-function renderBottomBar() {
-  const bar = document.getElementById("bottomBar");
-  const count = document.getElementById("selectedCount");
-
-  if (!selectedProducts.length) {
-    bar.classList.add("hidden");
-    return;
-  }
-
-  bar.classList.remove("hidden");
-  count.textContent = `${selectedProducts.length} selected`;
-}
-
 async function activateStore() {
   const telegramId = getTelegramId();
 
@@ -527,12 +514,6 @@ async function loadFavorites() {
 
     container.appendChild(card);
   });
-}
-
-function getDealStatus(deal) {
-  if (deal.redeemed) return "used";
-  if (Date.now() > deal.expiresAt) return "expired";
-  return "pending";
 }
 
 function formatRemaining(ms) {
@@ -688,71 +669,6 @@ function updateBottomBar() {
 
   bar.classList.remove("hidden");
   count.textContent = `${selectedProducts.length} item${selectedProducts.length > 1 ? "s" : ""}`;
-}
-
-function startDealTimer(dealId, expiresAt) {
-  const el = document.getElementById(`timer_${dealId}`);
-  if (!el) return;
-
-  const interval = setInterval(() => {
-    const diff = expiresAt - Date.now();
-    if (diff <= 0) {
-      el.innerText = "Expired";
-      clearInterval(interval);
-      loadMyDeals();
-      return;
-    }
-
-    el.innerText = formatRemaining(diff);
-  }, 1000);
-}
-
-async function activateProduct(productId, btn) {
-  const telegramId = getTelegramId();
-  console.log(
-    "activateProduct telegramId =",
-    telegramId,
-    "telegramUser =",
-    telegramUser,
-  );
-
-  if (!telegramId) {
-    alert("No Telegram user");
-    return;
-  }
-
-  const content = btn.closest(".product-content");
-  const qtyEl = content.querySelector(".qty");
-
-  const res = await fetch(`${API_BASE}/api/activate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      productId,
-      telegramId,
-    }),
-  });
-
-  const data = await res.json();
-  console.log("activateProduct response =", data);
-
-  if (data.error) {
-    alert(data.error);
-    return;
-  }
-
-  openModal(data.qr, data.qrPayload, data.activation.expiresAt);
-
-  if (qtyEl && typeof data.remainingQuantity !== "undefined") {
-    qtyEl.textContent = `Only ${data.remainingQuantity} left`;
-  }
-
-  btn.disabled = true;
-  btn.textContent = "Activated";
-
-  await loadMyDeals();
 }
 
 async function showSavedQr(dealId) {

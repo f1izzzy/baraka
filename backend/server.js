@@ -10,9 +10,96 @@ app.use(express.json());
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
 const MERCHANT_API_KEY = process.env.MERCHANT_API_KEY || "";
+const MERCHANT_TOKEN_SECRET =
+  process.env.MERCHANT_TOKEN_SECRET || MERCHANT_API_KEY || "baraka-merchant";
+
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on("finish", () => {
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`,
+    );
+  });
+
+  next();
+});
 
 function makeId() {
   return crypto.randomUUID();
+}
+
+function hashMerchantPassword(password) {
+  return crypto.createHash("sha256").update(String(password)).digest("hex");
+}
+
+function signMerchantToken(payload) {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", MERCHANT_TOKEN_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyMerchantToken(token) {
+  if (!token || !token.includes(".")) return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  const expectedSignature = crypto
+    .createHmac("sha256", MERCHANT_TOKEN_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  if (signature !== expectedSignature) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    );
+
+    if (!payload?.merchantAccountId || !payload?.storeId || !payload?.login) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function writeAuditLog({
+  actorType,
+  actorId = "",
+  action,
+  entityType,
+  entityId = "",
+  metadata = {},
+}) {
+  try {
+    await pool.query(
+      `
+      insert into audit_logs (
+        id, actor_type, actor_id, action, entity_type, entity_id, metadata
+      )
+      values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      `,
+      [
+        makeId(),
+        actorType,
+        String(actorId || ""),
+        action,
+        entityType,
+        String(entityId || ""),
+        JSON.stringify(metadata || {}),
+      ],
+    );
+  } catch (err) {
+    console.error("audit log write error:", err.message);
+  }
 }
 
 function mapStore(row) {
@@ -65,6 +152,12 @@ function getApiKey(req) {
   return req.headers["x-api-key"] || "";
 }
 
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) return "";
+  return authHeader.slice("Bearer ".length).trim();
+}
+
 function requireAdmin(req, res, next) {
   if (!ADMIN_API_KEY) {
     return res.status(500).json({ error: "ADMIN_API_KEY is not configured" });
@@ -78,6 +171,14 @@ function requireAdmin(req, res, next) {
 }
 
 function requireMerchant(req, res, next) {
+  const merchantToken = getBearerToken(req);
+  const merchantSession = verifyMerchantToken(merchantToken);
+
+  if (merchantSession) {
+    req.merchant = merchantSession;
+    return next();
+  }
+
   if (!MERCHANT_API_KEY) {
     return res
       .status(500)
@@ -89,6 +190,10 @@ function requireMerchant(req, res, next) {
   }
 
   next();
+}
+
+function getAdminActorId() {
+  return "admin-api-key";
 }
 
 /* USERS */
@@ -199,6 +304,7 @@ app.get("/api/stores/:id", async (req, res) => {
 
 app.post("/api/stores", requireAdmin, async (req, res) => {
   try {
+    const storeId = makeId();
     const inserted = await pool.query(
       `
       insert into stores (
@@ -208,7 +314,7 @@ app.post("/api/stores", requireAdmin, async (req, res) => {
       returning *
       `,
       [
-        makeId(),
+        storeId,
         req.body.name || "",
         req.body.description || "",
         req.body.location || "",
@@ -217,6 +323,18 @@ app.post("/api/stores", requireAdmin, async (req, res) => {
         req.body.logo || "",
       ],
     );
+
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "store_created",
+      entityType: "store",
+      entityId: storeId,
+      metadata: {
+        name: req.body.name || "",
+        location: req.body.location || "",
+      },
+    });
 
     res.json(mapStore(inserted.rows[0]));
   } catch (err) {
@@ -255,6 +373,18 @@ app.put("/api/stores/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Store not found" });
     }
 
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "store_updated",
+      entityType: "store",
+      entityId: req.params.id,
+      metadata: {
+        name: updated.rows[0].name,
+        location: updated.rows[0].location,
+      },
+    });
+
     res.json(mapStore(updated.rows[0]));
   } catch (err) {
     console.error("update store error:", err);
@@ -272,6 +402,17 @@ app.delete("/api/stores/:id", requireAdmin, async (req, res) => {
     if (!deleted.rows.length) {
       return res.status(404).json({ error: "Store not found" });
     }
+
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "store_deleted",
+      entityType: "store",
+      entityId: req.params.id,
+      metadata: {
+        name: deleted.rows[0].name,
+      },
+    });
 
     res.json({
       success: true,
@@ -306,6 +447,7 @@ app.post("/api/products", requireAdmin, async (req, res) => {
           ? req.body.sizes
           : [];
 
+    const productId = makeId();
     const inserted = await pool.query(
       `
       insert into products (
@@ -316,7 +458,7 @@ app.post("/api/products", requireAdmin, async (req, res) => {
       returning *
       `,
       [
-        makeId(),
+        productId,
         req.body.storeId,
         req.body.title || "",
         req.body.description || "",
@@ -330,6 +472,19 @@ app.post("/api/products", requireAdmin, async (req, res) => {
         req.body.expirationDate || null,
       ],
     );
+
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "product_created",
+      entityType: "product",
+      entityId: productId,
+      metadata: {
+        storeId: req.body.storeId,
+        title: req.body.title || "",
+        price: Number(req.body.price) || 0,
+      },
+    });
 
     res.json(mapProduct(inserted.rows[0]));
   } catch (err) {
@@ -397,6 +552,19 @@ app.put("/api/products/:id", requireAdmin, async (req, res) => {
       ],
     );
 
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "product_updated",
+      entityType: "product",
+      entityId: req.params.id,
+      metadata: {
+        storeId: updated.rows[0].store_id,
+        title: updated.rows[0].title,
+        price: Number(updated.rows[0].price),
+      },
+    });
+
     res.json(mapProduct(updated.rows[0]));
   } catch (err) {
     console.error("update product error:", err);
@@ -414,6 +582,18 @@ app.delete("/api/products/:id", requireAdmin, async (req, res) => {
     if (!deleted.rows.length) {
       return res.status(404).json({ error: "Product not found" });
     }
+
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "product_deleted",
+      entityType: "product",
+      entityId: req.params.id,
+      metadata: {
+        storeId: deleted.rows[0].store_id,
+        title: deleted.rows[0].title,
+      },
+    });
 
     res.json({
       success: true,
@@ -597,6 +777,18 @@ app.post("/api/activate-store", async (req, res) => {
 
     await client.query("commit");
 
+    await writeAuditLog({
+      actorType: "user",
+      actorId: String(telegramId),
+      action: "activation_created",
+      entityType: "activation",
+      entityId: activationId,
+      metadata: {
+        storeId: String(storeId),
+        productIds,
+      },
+    });
+
     const qrPayload = JSON.stringify({
       activationId,
       storeId,
@@ -695,6 +887,14 @@ app.post("/api/redeem", requireMerchant, async (req, res) => {
 
     const activation = activationRes.rows[0];
 
+    if (req.merchant?.storeId && req.merchant.storeId !== activation.store_id) {
+      return res.status(403).json({ error: "This QR belongs to another store" });
+    }
+
+    if (req.merchant?.storeId && req.merchant.storeId !== activation.store_id) {
+      return res.status(403).json({ error: "This QR belongs to another store" });
+    }
+
     if (Date.now() > Number(activation.expires_at)) {
       return res.status(400).json({ error: "QR expired" });
     }
@@ -783,6 +983,19 @@ app.post("/api/activations/preview", requireMerchant, async (req, res) => {
       [activation.telegram_id],
     );
 
+    await writeAuditLog({
+      actorType: req.merchant ? "merchant" : "merchant_api_key",
+      actorId: req.merchant?.login || "shared-key",
+      action: "activation_redeemed",
+      entityType: "activation",
+      entityId: activationId,
+      metadata: {
+        storeId: activation.store_id,
+        telegramId: activation.telegram_id,
+        productIds: activation.product_ids || [],
+      },
+    });
+
     res.json({
       success: true,
       activation: {
@@ -807,9 +1020,12 @@ app.post("/api/activations/preview", requireMerchant, async (req, res) => {
 
 app.get("/api/activations", requireMerchant, async (req, res) => {
   try {
-    const result = await pool.query(
-      `select * from activations order by activated_at desc`,
-    );
+    const result = req.merchant?.storeId
+      ? await pool.query(
+          `select * from activations where store_id = $1 order by activated_at desc`,
+          [req.merchant.storeId],
+        )
+      : await pool.query(`select * from activations order by activated_at desc`);
 
     res.json(
       result.rows.map((a) => ({
@@ -860,6 +1076,211 @@ app.get("/api/admin/activations", requireAdmin, async (req, res) => {
     );
   } catch (err) {
     console.error("admin activations error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      select *
+      from audit_logs
+      order by created_at desc
+      limit 200
+    `);
+
+    res.json(
+      result.rows.map((row) => ({
+        _id: row.id,
+        actorType: row.actor_type,
+        actorId: row.actor_id,
+        action: row.action,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        metadata: row.metadata || {},
+        createdAt: row.created_at,
+      })),
+    );
+  } catch (err) {
+    console.error("audit logs error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/admin/merchant-accounts", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      select
+        m.*,
+        s.name as store_name
+      from merchant_accounts m
+      join stores s on s.id = m.store_id
+      order by s.name asc, m.login asc
+    `);
+
+    res.json(
+      result.rows.map((row) => ({
+        _id: row.id,
+        storeId: row.store_id,
+        storeName: row.store_name,
+        login: row.login,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })),
+    );
+  } catch (err) {
+    console.error("merchant accounts error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/merchant-accounts", requireAdmin, async (req, res) => {
+  try {
+    const { storeId, login, password } = req.body;
+
+    if (!storeId || !login || !password) {
+      return res
+        .status(400)
+        .json({ error: "storeId, login and password are required" });
+    }
+
+    const storeRes = await pool.query(
+      `select * from stores where id = $1 limit 1`,
+      [storeId],
+    );
+
+    if (!storeRes.rows.length) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    const existingRes = await pool.query(
+      `select * from merchant_accounts where login = $1 limit 1`,
+      [String(login).trim()],
+    );
+
+    let account;
+
+    if (existingRes.rows.length) {
+      const updated = await pool.query(
+        `
+        update merchant_accounts
+        set
+          store_id = $2,
+          password_hash = $3,
+          is_active = true,
+          updated_at = now()
+        where login = $1
+        returning *
+        `,
+        [String(login).trim(), storeId, hashMerchantPassword(password)],
+      );
+      account = updated.rows[0];
+    } else {
+      const inserted = await pool.query(
+        `
+        insert into merchant_accounts (
+          id, store_id, login, password_hash, is_active
+        )
+        values ($1, $2, $3, $4, $5)
+        returning *
+        `,
+        [makeId(), storeId, String(login).trim(), hashMerchantPassword(password), true],
+      );
+      account = inserted.rows[0];
+    }
+
+    await writeAuditLog({
+      actorType: "admin",
+      actorId: getAdminActorId(),
+      action: "merchant_account_upserted",
+      entityType: "merchant_account",
+      entityId: account.id,
+      metadata: {
+        storeId: account.store_id,
+        login: account.login,
+      },
+    });
+
+    res.json({
+      success: true,
+      merchantAccount: {
+        _id: account.id,
+        storeId: account.store_id,
+        login: account.login,
+        isActive: account.is_active,
+      },
+    });
+  } catch (err) {
+    console.error("upsert merchant account error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/merchant/login", async (req, res) => {
+  try {
+    const { login, password } = req.body;
+
+    if (!login || !password) {
+      return res.status(400).json({ error: "login and password are required" });
+    }
+
+    const result = await pool.query(
+      `
+      select
+        m.*,
+        s.name as store_name
+      from merchant_accounts m
+      join stores s on s.id = m.store_id
+      where m.login = $1
+      limit 1
+      `,
+      [String(login).trim()],
+    );
+
+    if (!result.rows.length) {
+      return res.status(401).json({ error: "Invalid login or password" });
+    }
+
+    const account = result.rows[0];
+
+    if (!account.is_active) {
+      return res.status(403).json({ error: "Merchant account is disabled" });
+    }
+
+    if (account.password_hash !== hashMerchantPassword(password)) {
+      return res.status(401).json({ error: "Invalid login or password" });
+    }
+
+    const token = signMerchantToken({
+      merchantAccountId: account.id,
+      storeId: account.store_id,
+      login: account.login,
+    });
+
+    await writeAuditLog({
+      actorType: "merchant",
+      actorId: account.login,
+      action: "merchant_logged_in",
+      entityType: "merchant_account",
+      entityId: account.id,
+      metadata: {
+        storeId: account.store_id,
+      },
+    });
+
+    res.json({
+      success: true,
+      token,
+      merchant: {
+        _id: account.id,
+        login: account.login,
+        storeId: account.store_id,
+        storeName: account.store_name,
+      },
+    });
+  } catch (err) {
+    console.error("merchant login error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });

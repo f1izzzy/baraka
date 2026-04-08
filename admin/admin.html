@@ -230,6 +230,19 @@
 
       <div class="card">
         <h2>Redeem History</h2>
+        <select id="activationStatusFilter">
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="redeemed">Redeemed</option>
+          <option value="expired">Expired</option>
+        </select>
+        <select id="activationStoreFilter">
+          <option value="all">All stores</option>
+        </select>
+        <input
+          id="activationSearch"
+          placeholder="Search by store, Telegram ID or username"
+        />
         <button onclick="setupBotWebhook()" style="margin-bottom: 10px">
           Enable Telegram Bot
         </button>
@@ -237,6 +250,25 @@
           Refresh History
         </button>
         <div id="activationList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Merchant Accounts</h2>
+        <select id="merchantStoreId"></select>
+        <input id="merchantLogin" placeholder="Merchant login" />
+        <input id="merchantPassword" placeholder="Merchant password" />
+        <button onclick="saveMerchantAccount()" style="margin-bottom: 14px">
+          Save Merchant Account
+        </button>
+        <div id="merchantAccountList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Audit Log</h2>
+        <button onclick="loadAuditLogs()" style="margin-bottom: 14px">
+          Refresh Audit Log
+        </button>
+        <div id="auditLogList"></div>
       </div>
     </div>
 
@@ -248,6 +280,8 @@
       let storesCache = [];
       let productsCache = [];
       let activationsCache = [];
+      let merchantAccountsCache = [];
+      let auditLogsCache = [];
 
       function getAdminKey() {
         let key = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -428,15 +462,24 @@
         const stores = await res.json();
         storesCache = stores;
 
-        const select = document.getElementById("productStoreId");
-        select.innerHTML = "";
+        ["productStoreId", "merchantStoreId", "activationStoreFilter"].forEach(
+          (selectId) => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
 
-        stores.forEach((store) => {
-          const option = document.createElement("option");
-          option.value = store._id;
-          option.textContent = store.name;
-          select.appendChild(option);
-        });
+            const keepAllOption = selectId === "activationStoreFilter";
+            select.innerHTML = keepAllOption
+              ? `<option value="all">All stores</option>`
+              : "";
+
+            stores.forEach((store) => {
+              const option = document.createElement("option");
+              option.value = store._id;
+              option.textContent = store.name;
+              select.appendChild(option);
+            });
+          },
+        );
       }
 
       async function loadStoreList() {
@@ -500,34 +543,70 @@
         }
       }
 
-      async function loadActivationHistory() {
-        const activationList = document.getElementById("activationList");
-        activationList.innerHTML = "Loading...";
+      function getActivationStatus(activation) {
+        if (activation.redeemed) return "redeemed";
+        if (Date.now() > Number(activation.expiresAt)) return "expired";
+        return "active";
+      }
 
-        const res = await apiFetch("/api/admin/activations");
-        const activations = await res.json();
-        activationsCache = Array.isArray(activations) ? activations : [];
+      function renderActivationHistory() {
+        const activationList = document.getElementById("activationList");
+        const statusFilter =
+          document.getElementById("activationStatusFilter").value;
+        const storeFilter = document.getElementById("activationStoreFilter").value;
+        const search = document
+          .getElementById("activationSearch")
+          .value.toLowerCase()
+          .trim();
+
+        const filtered = activationsCache.filter((activation) => {
+          const status = getActivationStatus(activation);
+
+          if (statusFilter !== "all" && status !== statusFilter) {
+            return false;
+          }
+
+          if (storeFilter !== "all" && activation.storeId !== storeFilter) {
+            return false;
+          }
+
+          if (!search) return true;
+
+          const haystack = [
+            activation.storeName || "",
+            activation.telegramId || "",
+            activation.userFirstName || "",
+            activation.username || "",
+            activation._id || "",
+          ]
+            .join(" ")
+            .toLowerCase();
+
+          return haystack.includes(search);
+        });
 
         activationList.innerHTML = "";
 
-        if (!activationsCache.length) {
-          activationList.innerHTML = `<div class="mini">No activations yet.</div>`;
+        if (!filtered.length) {
+          activationList.innerHTML = `<div class="mini">No matching activations.</div>`;
           return;
         }
 
-        activationsCache.forEach((activation) => {
+        filtered.forEach((activation) => {
           const item = document.createElement("div");
           item.className = "list-item";
 
-          const status = activation.redeemed
-            ? "Redeemed"
-            : Date.now() > Number(activation.expiresAt)
-              ? "Expired"
-              : "Active";
+          const status = getActivationStatus(activation);
+          const statusLabel =
+            status === "redeemed"
+              ? "Redeemed"
+              : status === "expired"
+                ? "Expired"
+                : "Active";
 
           item.innerHTML = `
             <strong>${activation.storeName || "Store not found"}</strong><br>
-            <span class="mini">Status: ${status}</span><br>
+            <span class="mini">Status: ${statusLabel}</span><br>
             <span class="mini">Telegram ID: ${activation.telegramId}</span><br>
             <span class="mini">User: ${activation.userFirstName || "-"} ${activation.username ? `(@${activation.username})` : ""}</span><br>
             <span class="mini">Products count: ${(activation.productIds || []).length}</span><br>
@@ -538,6 +617,101 @@
           `;
 
           activationList.appendChild(item);
+        });
+      }
+
+      async function loadActivationHistory() {
+        const activationList = document.getElementById("activationList");
+        activationList.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/activations");
+        const activations = await res.json();
+        activationsCache = Array.isArray(activations) ? activations : [];
+
+        renderActivationHistory();
+      }
+
+      async function saveMerchantAccount() {
+        const storeId = document.getElementById("merchantStoreId").value;
+        const login = document.getElementById("merchantLogin").value.trim();
+        const password = document.getElementById("merchantPassword").value.trim();
+
+        if (!storeId || !login || !password) {
+          alert("Store, login and password are required.");
+          return;
+        }
+
+        const res = await apiFetch("/api/admin/merchant-accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storeId, login, password }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        document.getElementById("merchantLogin").value = "";
+        document.getElementById("merchantPassword").value = "";
+        await loadMerchantAccounts();
+      }
+
+      async function loadMerchantAccounts() {
+        const list = document.getElementById("merchantAccountList");
+        list.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/merchant-accounts");
+        const data = await res.json();
+        merchantAccountsCache = Array.isArray(data) ? data : [];
+
+        list.innerHTML = "";
+
+        if (!merchantAccountsCache.length) {
+          list.innerHTML = `<div class="mini">No merchant accounts yet.</div>`;
+          return;
+        }
+
+        merchantAccountsCache.forEach((account) => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+          item.innerHTML = `
+            <strong>${account.storeName}</strong><br>
+            <span class="mini">Login: ${account.login}</span><br>
+            <span class="mini">Status: ${account.isActive ? "Active" : "Disabled"}</span><br>
+            <span class="mini">Updated: ${account.updatedAt ? new Date(account.updatedAt).toLocaleString() : "-"}</span>
+          `;
+          list.appendChild(item);
+        });
+      }
+
+      async function loadAuditLogs() {
+        const list = document.getElementById("auditLogList");
+        list.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/audit-logs");
+        const data = await res.json();
+        auditLogsCache = Array.isArray(data) ? data : [];
+
+        list.innerHTML = "";
+
+        if (!auditLogsCache.length) {
+          list.innerHTML = `<div class="mini">No audit entries yet.</div>`;
+          return;
+        }
+
+        auditLogsCache.forEach((entry) => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+          item.innerHTML = `
+            <strong>${entry.action}</strong><br>
+            <span class="mini">Actor: ${entry.actorType} / ${entry.actorId || "-"}</span><br>
+            <span class="mini">Entity: ${entry.entityType} / ${entry.entityId || "-"}</span><br>
+            <span class="mini">At: ${entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}</span><br>
+            <span class="mini">Data: ${JSON.stringify(entry.metadata || {})}</span>
+          `;
+          list.appendChild(item);
         });
       }
 
@@ -574,7 +748,19 @@
         await loadStoreList();
         await loadProductList();
         await loadActivationHistory();
+        await loadMerchantAccounts();
+        await loadAuditLogs();
       }
+
+      document
+        .getElementById("activationStatusFilter")
+        .addEventListener("change", renderActivationHistory);
+      document
+        .getElementById("activationStoreFilter")
+        .addEventListener("change", renderActivationHistory);
+      document
+        .getElementById("activationSearch")
+        .addEventListener("input", renderActivationHistory);
 
       loadAll();
     </script>
