@@ -61,7 +61,7 @@ function showTab(tabId, btn) {
 
   document
     .querySelectorAll(".tab-btn")
-    .forEach((b) => b.classList.remove("active"));
+    .forEach((tabButton) => tabButton.classList.remove("active"));
   btn.classList.add("active");
 
   if (tabId === "favoritesTab") loadFavorites();
@@ -72,7 +72,7 @@ function renderSkeleton(targetId, count = 2) {
   const container = document.getElementById(targetId);
   container.innerHTML = "";
 
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < count; i += 1) {
     const card = document.createElement("div");
     card.className = "skeleton-card";
     card.innerHTML = `
@@ -103,7 +103,7 @@ async function loadFavoriteIds() {
     }
 
     const products = await res.json();
-    favoriteIds = products.map((p) => p._id);
+    favoriteIds = products.map((product) => product._id);
   } catch (err) {
     console.error("loadFavoriteIds error:", err);
     favoriteIds = [];
@@ -143,7 +143,7 @@ function renderStores(stores) {
           <span>${store.location}</span>
           <span>${store.productCount} products</span>
         </div>
-        <button class="main-btn" onclick="openStore('${store._id}')">Open Store</button>
+        <button class="main-btn" onclick="openStore('${store._id}')">Open store</button>
       </div>
     `;
 
@@ -184,8 +184,8 @@ async function openStore(storeId, category = "All") {
 function applyStoreData(data) {
   lastCurrentStoreSignature = getCurrentStoreSignature(data);
   renderStoreDetails(data.store);
-  currentStoreProducts = (data.products || []).map((p) => ({
-    ...p,
+  currentStoreProducts = (data.products || []).map((product) => ({
+    ...product,
     storeName: data.store?.name || "",
   }));
   renderCategoryFilters(currentStoreProducts);
@@ -215,18 +215,18 @@ function renderCategoryFilters(products) {
 
   const categories = [
     "All",
-    ...new Set(products.map((p) => p.category).filter(Boolean)),
+    ...new Set(products.map((product) => product.category).filter(Boolean)),
   ];
 
   container.innerHTML = `
     <div class="category-row">
       ${categories
         .map(
-          (cat) => `
-          <div class="category-chip ${cat === currentCategory ? "active" : ""}" onclick="setCategory('${cat}')">
-            ${cat}
-          </div>
-        `,
+          (category) => `
+            <div class="category-chip ${category === currentCategory ? "active" : ""}" onclick="setCategory('${category}')">
+              ${category}
+            </div>
+          `,
         )
         .join("")}
     </div>
@@ -236,6 +236,11 @@ function renderCategoryFilters(products) {
 function setCategory(category) {
   currentCategory = category;
   renderCategoryFilters(currentStoreProducts);
+  renderProducts(currentStoreProducts);
+}
+
+function reloadCurrentStore() {
+  if (!currentStoreId) return;
   renderProducts(currentStoreProducts);
 }
 
@@ -290,14 +295,15 @@ function getFilteredAndSortedProducts(products) {
   let filtered = [...products];
 
   if (currentCategory !== "All") {
-    filtered = filtered.filter((p) => p.category === currentCategory);
+    filtered = filtered.filter((product) => product.category === currentCategory);
   }
 
   if (search) {
-    filtered = filtered.filter((p) => {
-      const title = (p.title || "").toLowerCase();
-      const category = (p.category || "").toLowerCase();
-      const storeName = (p.storeName || "").toLowerCase();
+    filtered = filtered.filter((product) => {
+      const title = (product.title || "").toLowerCase();
+      const category = (product.category || "").toLowerCase();
+      const storeName = (product.storeName || "").toLowerCase();
+
       return (
         title.includes(search) ||
         category.includes(search) ||
@@ -350,19 +356,16 @@ function renderProducts(products) {
         <div class="sizes">${sizesHtml}</div>
         <div class="meta">
           <span>${product.category || "Other"}</span>
-          <span class="qty">Only ${product.remainingQuantity} left</span>
+          <span>Only ${product.remainingQuantity} left</span>
         </div>
         <div class="meta">
           <span>${product.views} viewed</span>
         </div>
         <div class="card-actions">
-          <button class="icon-btn ${isFav ? "active" : ""}" onclick="toggleFavorite('${product._id}', this)">♥</button>
-          <button
-  class="main-btn ${isSelected ? "selected-product-btn" : ""}"
-  onclick="toggleSelect('${product._id}', this)"
->
-  ${isSelected ? "Added" : "Add"}
-</button>
+          <button class="icon-btn ${isFav ? "active" : ""}" onclick="toggleFavorite('${product._id}', this)">♡</button>
+          <button class="main-btn ${isSelected ? "selected-product-btn" : ""}" onclick="toggleSelect('${product._id}', this)">
+            ${isSelected ? "Added" : "Add"}
+          </button>
         </div>
       </div>
     `;
@@ -389,7 +392,7 @@ async function activateStore() {
   const telegramId = getTelegramId();
 
   if (!telegramId) {
-    alert("No Telegram user");
+    alert("Open Baraka from Telegram to activate deals.");
     return;
   }
 
@@ -423,7 +426,7 @@ async function toggleFavorite(productId, btn) {
   const telegramId = getTelegramId();
 
   if (!telegramId) {
-    alert("No Telegram user");
+    alert("Open Baraka from Telegram to save favorites.");
     return;
   }
 
@@ -454,7 +457,8 @@ async function loadFavorites() {
   const telegramId = getTelegramId();
 
   if (!telegramId) {
-    container.innerHTML = `<div class="empty-box">Open inside Telegram to use favorites.</div>`;
+    container.innerHTML =
+      `<div class="empty-box">Open inside Telegram to use favorites.</div>`;
     return;
   }
 
@@ -493,8 +497,8 @@ async function loadFavorites() {
           <span>Only ${product.remainingQuantity} left</span>
         </div>
         <div class="card-actions">
-          <button class="icon-btn active" onclick="toggleFavorite('${product._id}', this); setTimeout(loadFavorites, 150)">♥</button>
-          <button class="main-btn" onclick="openProductStore('${product.storeId}')">Open Store</button>
+          <button class="icon-btn active" onclick="toggleFavorite('${product._id}', this); setTimeout(loadFavorites, 150)">♡</button>
+          <button class="main-btn" onclick="openProductStore('${product.storeId}')">Open store</button>
         </div>
       </div>
     `;
@@ -557,7 +561,8 @@ async function loadMyDeals() {
   const telegramId = getTelegramId();
 
   if (!telegramId) {
-    container.innerHTML = `<div class="empty-box">Open inside Telegram to view your deals.</div>`;
+    container.innerHTML =
+      `<div class="empty-box">Open inside Telegram to view your deals.</div>`;
     return;
   }
 
@@ -571,29 +576,24 @@ async function loadMyDeals() {
     container.innerHTML = "";
 
     if (!deals.length) {
-      container.innerHTML = `<div class="empty-box">No deals yet</div>`;
+      container.innerHTML = `<div class="empty-box">No deals yet.</div>`;
       return;
     }
 
     deals.forEach((deal) => {
       const status = getDealStatus(deal);
-
       const badgeText =
-        status === "used"
-          ? "Used"
-          : status === "expired"
-            ? "Expired"
-            : "Active";
+        status === "used" ? "Used" : status === "expired" ? "Expired" : "Active";
 
       const productsHtml = (deal.products || []).length
         ? deal.products
             .map(
-              (p) => `
-            <div class="deal-product">
-              <span>${p.title}</span>
-              <span>$${p.price}</span>
-            </div>
-          `,
+              (product) => `
+                <div class="deal-product">
+                  <span>${product.title}</span>
+                  <span>$${product.price}</span>
+                </div>
+              `,
             )
             .join("")
         : `<div class="deal-product-empty">No products found</div>`;
@@ -606,23 +606,18 @@ async function loadMyDeals() {
           <div class="status-badge ${status}" id="deal-badge-${deal._id}">
             ${badgeText}
           </div>
-
           <div class="deal-title">${deal.store?.name || "Store"}</div>
           <div class="deal-sub">${(deal.products || []).length} items selected</div>
-
           <div class="deal-meta">
             <span>Activated</span>
             <span>${new Date(deal.activatedAt).toLocaleDateString()}</span>
           </div>
-
           <div class="deal-products">
             ${productsHtml}
           </div>
-
           <div class="deal-timer" id="deal-timer-${deal._id}">
             ${status === "active" ? formatDealTimeLeft(deal.expiresAt) : badgeText}
           </div>
-
           ${
             status === "active"
               ? `<button class="main-btn" style="margin-top:12px;" onclick="showSavedQr('${deal._id}')">Show QR again</button>`
@@ -639,7 +634,7 @@ async function loadMyDeals() {
     });
   } catch (err) {
     console.error("loadMyDeals error:", err);
-    container.innerHTML = `<div class="empty-box">Failed to load deals</div>`;
+    container.innerHTML = `<div class="empty-box">Failed to load deals.</div>`;
   }
 }
 
@@ -659,7 +654,7 @@ function updateBottomBar() {
 }
 
 async function showSavedQr(dealId) {
-  const deal = myDealsCache.find((d) => d._id === dealId);
+  const deal = myDealsCache.find((item) => item._id === dealId);
   if (!deal) return;
 
   const qrPayload = JSON.stringify({
@@ -692,7 +687,7 @@ function goHome() {
 function openProductStore(storeId) {
   document
     .querySelectorAll(".tab-btn")
-    .forEach((b) => b.classList.remove("active"));
+    .forEach((tabButton) => tabButton.classList.remove("active"));
   document.querySelector(".tab-btn")?.classList.add("active");
 
   document.getElementById("favoritesTab").classList.add("hidden");
@@ -708,9 +703,9 @@ function openModal(qr, qrPayload, expiresAt) {
   const content = document.getElementById("qrContent");
 
   content.innerHTML = `
-    <p>Your QR code:</p>
+    <p>Your store QR is ready.</p>
     <img src="${qr}" alt="QR Code">
-    <button class="main-btn" style="margin-top:12px;" onclick="copyPayload('${encodeURIComponent(qrPayload)}')">Copy Code</button>
+    <button class="main-btn" style="margin-top:12px;" onclick="copyPayload('${encodeURIComponent(qrPayload)}')">Copy payload</button>
     <p class="timer-text" id="modalTimer"></p>
     <div class="qr-copy">${qrPayload}</div>
   `;
@@ -725,6 +720,7 @@ function startModalTimer(expiresAt) {
 
   const interval = setInterval(() => {
     const diff = expiresAt - Date.now();
+
     if (diff <= 0) {
       el.innerText = "Expired";
       clearInterval(interval);
@@ -738,7 +734,7 @@ function startModalTimer(expiresAt) {
 function copyPayload(encodedPayload) {
   const payload = decodeURIComponent(encodedPayload);
   navigator.clipboard.writeText(payload);
-  showToast("Copied!");
+  showToast("Payload copied");
 }
 
 function closeModal() {
@@ -755,6 +751,7 @@ window.onclick = function (e) {
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
+
   if (searchInput) {
     searchInput.addEventListener("input", () => {
       if (currentStoreId) renderProducts(currentStoreProducts);
@@ -765,20 +762,20 @@ document.addEventListener("DOMContentLoaded", () => {
 async function initApp() {
   try {
     await loginUser();
-  } catch (e) {
-    console.error("init login failed:", e);
+  } catch (err) {
+    console.error("init login failed:", err);
   }
 
   try {
     await loadFavoriteIds();
-  } catch (e) {
-    console.error("init favorites failed:", e);
+  } catch (err) {
+    console.error("init favorites failed:", err);
   }
 
   try {
     await loadStores();
-  } catch (e) {
-    console.error("init stores failed:", e);
+  } catch (err) {
+    console.error("init stores failed:", err);
     document.getElementById("stores").innerHTML =
       `<div class="empty-box">Failed to load stores.</div>`;
   }
@@ -852,31 +849,30 @@ function startAutoRefresh() {
   }, AUTO_REFRESH_MS);
 }
 
-/* ===== RIPPLE EFFECT ===== */
-
-document.addEventListener("click", function (e) {
-  const target = e.target.closest(".main-btn, .icon-btn");
+document.addEventListener("click", (event) => {
+  const target = event.target.closest(".main-btn, .icon-btn, .bottom-bar-btn");
   if (!target) return;
 
   const circle = document.createElement("span");
   const rect = target.getBoundingClientRect();
-
   const size = Math.max(rect.width, rect.height);
-  circle.style.width = circle.style.height = size + "px";
 
-  circle.style.left = e.clientX - rect.left - size / 2 + "px";
-  circle.style.top = e.clientY - rect.top - size / 2 + "px";
+  circle.style.width = `${size}px`;
+  circle.style.height = `${size}px`;
+  circle.style.left = `${event.clientX - rect.left - size / 2}px`;
+  circle.style.top = `${event.clientY - rect.top - size / 2}px`;
 
   target.classList.add("ripple");
   circle.classList.add("ripple");
-
   target.appendChild(circle);
 
   setTimeout(() => circle.remove(), 600);
 });
+
 function showToast(text) {
-  const t = document.getElementById("toast");
-  t.innerText = text;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2000);
+  const toast = document.getElementById("toast");
+  toast.innerText = text;
+  toast.classList.add("show");
+
+  setTimeout(() => toast.classList.remove("show"), 2000);
 }

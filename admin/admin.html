@@ -4,77 +4,150 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Baraka Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
     <script src="config.js"></script>
     <style>
+      :root {
+        --bg-0: #fff8f3;
+        --bg-1: #f6efe7;
+        --surface: rgba(255, 252, 247, 0.84);
+        --surface-strong: rgba(255, 255, 255, 0.94);
+        --line: rgba(103, 79, 58, 0.12);
+        --text: #19130f;
+        --text-soft: #6b5b50;
+        --accent: #ff6c47;
+        --accent-strong: #ff4e2f;
+        --shadow-lg: 0 24px 60px rgba(89, 53, 30, 0.12);
+        --shadow-md: 0 14px 36px rgba(89, 53, 30, 0.08);
+      }
+
       * {
         box-sizing: border-box;
       }
 
       body {
         margin: 0;
-        font-family: Inter, Arial, sans-serif;
+        font-family: "Manrope", Arial, sans-serif;
         background:
-          radial-gradient(
-            circle at top left,
-            rgba(255, 90, 60, 0.18),
-            transparent 30%
-          ),
-          radial-gradient(
-            circle at top right,
-            rgba(255, 170, 90, 0.14),
-            transparent 28%
-          ),
-          linear-gradient(180deg, #f8f8fb 0%, #f1f2f6 100%);
-        color: #111;
+          radial-gradient(circle at top left, rgba(255, 128, 91, 0.22), transparent 24%),
+          radial-gradient(circle at top right, rgba(255, 194, 122, 0.18), transparent 22%),
+          radial-gradient(circle at 50% 120%, rgba(255, 111, 76, 0.12), transparent 35%),
+          linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+        color: var(--text);
         min-height: 100vh;
       }
 
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+        background-size: 100% 100%, 28px 28px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 70%);
+      }
+
       .app {
-        max-width: 960px;
+        max-width: 1180px;
         margin: 0 auto;
-        padding: 24px 16px 40px;
+        padding: 24px 16px 48px;
       }
 
       .hero {
-        margin-bottom: 22px;
+        position: relative;
+        overflow: hidden;
+        padding: 26px;
+        margin-bottom: 20px;
+        border-radius: 32px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(255, 245, 236, 0.74)),
+          rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        right: -60px;
+        top: -72px;
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 124, 75, 0.22), transparent 68%);
       }
 
       .eyebrow {
-        display: inline-block;
-        padding: 8px 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.65);
-        backdrop-filter: blur(14px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 12px 24px rgba(90, 52, 28, 0.08);
         font-size: 12px;
-        color: #666;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #a53a26;
         margin-bottom: 12px;
       }
 
       h1 {
         margin: 0 0 8px;
-        font-size: 34px;
-        line-height: 1.05;
-        letter-spacing: -0.04em;
+        font-family: "Space Grotesk", "Manrope", Arial, sans-serif;
+        font-size: 42px;
+        line-height: 0.96;
+        letter-spacing: -0.06em;
+        max-width: 12ch;
       }
 
       .subtitle {
         margin: 0;
-        color: #666;
-        line-height: 1.5;
+        color: var(--text-soft);
+        line-height: 1.65;
         font-size: 15px;
+        max-width: 48ch;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .span-4 {
+        grid-column: span 4;
+      }
+
+      .span-6 {
+        grid-column: span 6;
+      }
+
+      .span-8 {
+        grid-column: span 8;
+      }
+
+      .span-12 {
+        grid-column: 1 / -1;
       }
 
       .card {
         position: relative;
-        background: rgba(255, 255, 255, 0.72);
-        backdrop-filter: blur(18px);
-        border: 1px solid rgba(255, 255, 255, 0.55);
-        border-radius: 24px;
+        background: var(--surface);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.68);
+        border-radius: 28px;
         padding: 20px;
-        box-shadow:
-          0 10px 30px rgba(0, 0, 0, 0.06),
-          inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        box-shadow: var(--shadow-lg);
         margin-bottom: 18px;
         overflow: hidden;
       }
@@ -83,11 +156,9 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(
-          135deg,
-          rgba(255, 255, 255, 0.4),
-          rgba(255, 255, 255, 0.05)
-        );
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.06)),
+          linear-gradient(180deg, transparent 45%, rgba(255, 121, 78, 0.05));
         pointer-events: none;
       }
 
@@ -98,7 +169,9 @@
 
       h2 {
         margin: 0 0 14px;
-        font-size: 22px;
+        font-family: "Space Grotesk", "Manrope", Arial, sans-serif;
+        font-size: 28px;
+        letter-spacing: -0.05em;
       }
 
       input,
@@ -107,11 +180,13 @@
         width: 100%;
         padding: 14px;
         margin-bottom: 12px;
-        border-radius: 16px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 18px;
+        border: 1px solid var(--line);
         font: inherit;
-        background: rgba(255, 255, 255, 0.85);
+        background: var(--surface-strong);
         outline: none;
+        color: var(--text);
+        box-shadow: 0 10px 24px rgba(89, 53, 30, 0.05);
       }
 
       textarea {
@@ -119,38 +194,57 @@
         resize: vertical;
       }
 
+      input:focus,
+      textarea:focus,
+      select:focus {
+        border-color: rgba(255, 108, 71, 0.35);
+        box-shadow: 0 0 0 5px rgba(255, 108, 71, 0.08);
+      }
+
       button {
         width: 100%;
         padding: 14px 16px;
         border: none;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #ff5a3c, #ff7d4d);
+        border-radius: 18px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
         color: white;
         font-weight: 700;
         cursor: pointer;
-        box-shadow: 0 12px 24px rgba(255, 90, 60, 0.22);
+        box-shadow: 0 14px 28px rgba(255, 92, 59, 0.22);
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease,
+          opacity 0.18s ease;
       }
 
       .danger {
-        background: rgba(17, 17, 17, 0.92);
-        box-shadow: 0 12px 24px rgba(17, 17, 17, 0.14);
+        background: rgba(24, 19, 15, 0.94);
+        box-shadow: 0 12px 26px rgba(24, 19, 15, 0.18);
         margin-top: 10px;
       }
 
       .edit {
-        background: rgba(255, 255, 255, 0.85);
-        color: #111;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--text);
+        box-shadow: 0 10px 24px rgba(89, 53, 30, 0.05);
         margin-top: 10px;
       }
 
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
       .list-item {
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.55);
-        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.68);
+        border-radius: 24px;
         padding: 18px;
         margin-bottom: 14px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+        box-shadow: var(--shadow-md);
       }
 
       .summary-grid {
@@ -160,23 +254,24 @@
       }
 
       .summary-item {
-        border-radius: 20px;
+        border-radius: 22px;
         padding: 18px;
-        background: rgba(255, 255, 255, 0.76);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: var(--shadow-md);
       }
 
       .summary-label {
         font-size: 13px;
-        color: #666;
+        color: var(--text-soft);
         margin-bottom: 6px;
       }
 
       .summary-value {
-        font-size: 28px;
+        font-family: "Space Grotesk", "Manrope", Arial, sans-serif;
+        font-size: 30px;
         font-weight: 800;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.05em;
       }
 
       .button-row {
@@ -190,7 +285,7 @@
       }
 
       .mini {
-        color: #666;
+        color: var(--text-soft);
         font-size: 14px;
         line-height: 1.6;
       }
@@ -201,6 +296,38 @@
         border-radius: 16px;
         margin-top: 10px;
         display: block;
+        box-shadow: var(--shadow-md);
+      }
+
+      @media (max-width: 900px) {
+        .span-4,
+        .span-6,
+        .span-8 {
+          grid-column: span 12;
+        }
+
+        h1 {
+          font-size: 34px;
+          max-width: 14ch;
+        }
+      }
+
+      @media (max-width: 540px) {
+        .app {
+          padding: 16px 14px 32px;
+        }
+
+        .hero {
+          padding: 22px;
+        }
+
+        h2 {
+          font-size: 24px;
+        }
+
+        .button-row {
+          flex-direction: column;
+        }
       }
     </style>
   </head>
@@ -208,119 +335,130 @@
     <div class="app">
       <div class="hero">
         <div class="eyebrow">Baraka Admin</div>
-        <h1>Manage stores and products</h1>
+        <h1>Run stores, merchant access, and redemptions from one control room.</h1>
         <p class="subtitle">
-          Create, edit and delete stores and fashion products.
+          Manage catalogs, track activations, control merchant accounts, and
+          monitor how in-store offers perform across the network.
         </p>
       </div>
 
-      <div class="card">
-        <h2>Dashboard Summary</h2>
-        <button onclick="loadDashboardSummary()" style="margin-bottom: 14px">
-          Refresh Dashboard
-        </button>
+      <div class="card span-12">
+        <div class="button-row" style="align-items: center; margin-bottom: 14px">
+          <h2 style="margin: 0; flex: 1">Dashboard Summary</h2>
+          <button class="edit" onclick="loadDashboardSummary()" style="max-width: 220px; margin: 0">
+            Refresh Dashboard
+          </button>
+        </div>
         <div class="summary-grid" id="dashboardSummary"></div>
       </div>
 
-      <div class="card">
-        <h2 id="storeFormTitle">Add Store</h2>
-        <input type="hidden" id="editStoreId" />
-        <input id="storeName" placeholder="Store name" />
-        <textarea
-          id="storeDescription"
-          placeholder="Store description"
-        ></textarea>
-        <input id="storeLocation" placeholder="Location" />
-        <input id="storeAddress" placeholder="Full address" />
-        <input id="storeCoverImage" placeholder="Cover image URL" />
-        <input id="storeLogo" placeholder="Logo URL" />
-        <button onclick="saveStore()">Save Store</button>
-      </div>
+      <div class="dashboard-grid">
+        <div class="card span-6">
+          <h2 id="storeFormTitle">Add Store</h2>
+          <input type="hidden" id="editStoreId" />
+          <input id="storeName" placeholder="Store name" />
+          <textarea
+            id="storeDescription"
+            placeholder="Store description"
+          ></textarea>
+          <input id="storeLocation" placeholder="Location" />
+          <input id="storeAddress" placeholder="Full address" />
+          <input id="storeCoverImage" placeholder="Cover image URL" />
+          <input id="storeLogo" placeholder="Logo URL" />
+          <button onclick="saveStore()">Save Store</button>
+        </div>
 
-      <div class="card">
-        <h2 id="productFormTitle">Add Product</h2>
-        <input type="hidden" id="editProductId" />
-        <select id="productStoreId"></select>
-        <input id="productTitle" placeholder="Product title" />
-        <textarea
-          id="productDescription"
-          placeholder="Product description"
-        ></textarea>
-        <input
-          id="productCategory"
-          placeholder="Category (Dress, Shoes, Jacket...)"
-        />
-        <input id="productPrice" placeholder="New price" />
-        <input id="productOldPrice" placeholder="Old price" />
-        <input id="productSizes" placeholder="Sizes, example: S, M, L, XL" />
-        <input id="productQuantity" placeholder="Quantity" />
-        <input
-          id="productExpirationDate"
-          placeholder="Expiration date (YYYY-MM-DD)"
-        />
-        <input id="productImage" placeholder="Product image URL" />
-        <button onclick="saveProduct()">Save Product</button>
-      </div>
+        <div class="card span-6">
+          <h2 id="productFormTitle">Add Product</h2>
+          <input type="hidden" id="editProductId" />
+          <select id="productStoreId"></select>
+          <input id="productTitle" placeholder="Product title" />
+          <textarea
+            id="productDescription"
+            placeholder="Product description"
+          ></textarea>
+          <input
+            id="productCategory"
+            placeholder="Category (Dress, Shoes, Jacket...)"
+          />
+          <input id="productPrice" placeholder="New price" />
+          <input id="productOldPrice" placeholder="Old price" />
+          <input id="productSizes" placeholder="Sizes, example: S, M, L, XL" />
+          <input id="productQuantity" placeholder="Quantity" />
+          <input
+            id="productExpirationDate"
+            placeholder="Expiration date (YYYY-MM-DD)"
+          />
+          <input id="productImage" placeholder="Product image URL" />
+          <button onclick="saveProduct()">Save Product</button>
+        </div>
 
-      <div class="card">
-        <h2>All Stores</h2>
-        <div id="storeList"></div>
-      </div>
+        <div class="card span-6">
+          <h2>All Stores</h2>
+          <div id="storeList"></div>
+        </div>
 
-      <div class="card">
-        <h2>All Products</h2>
-        <div id="productList"></div>
-      </div>
+        <div class="card span-6">
+          <h2>All Products</h2>
+          <div id="productList"></div>
+        </div>
 
-      <div class="card">
-        <h2>Redeem History</h2>
-        <select id="activationStatusFilter">
-          <option value="all">All statuses</option>
-          <option value="active">Active</option>
-          <option value="redeemed">Redeemed</option>
-          <option value="expired">Expired</option>
-        </select>
-        <select id="activationStoreFilter">
-          <option value="all">All stores</option>
-        </select>
-        <input
-          id="activationSearch"
-          placeholder="Search by store, Telegram ID or username"
-        />
-        <button onclick="setupBotWebhook()" style="margin-bottom: 10px">
-          Enable Telegram Bot
-        </button>
-        <button onclick="loadActivationHistory()" style="margin-bottom: 14px">
-          Refresh History
-        </button>
-        <div id="activationList"></div>
-      </div>
+        <div class="card span-8">
+          <div class="button-row" style="align-items: center; margin-bottom: 14px">
+            <h2 style="margin: 0; flex: 1">Redeem History</h2>
+            <button class="edit" onclick="setupBotWebhook()" style="max-width: 220px; margin: 0">
+              Enable Telegram Bot
+            </button>
+          </div>
+          <select id="activationStatusFilter">
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="redeemed">Redeemed</option>
+            <option value="expired">Expired</option>
+          </select>
+          <select id="activationStoreFilter">
+            <option value="all">All stores</option>
+          </select>
+          <input
+            id="activationSearch"
+            placeholder="Search by store, Telegram ID or username"
+          />
+          <button onclick="loadActivationHistory()" style="margin-bottom: 14px">
+            Refresh History
+          </button>
+          <div id="activationList"></div>
+        </div>
 
-      <div class="card">
-        <h2>Merchant Accounts</h2>
-        <select id="merchantStoreId"></select>
-        <input id="merchantLogin" placeholder="Merchant login" />
-        <input id="merchantPassword" placeholder="Merchant password" />
-        <button onclick="saveMerchantAccount()" style="margin-bottom: 14px">
-          Save Merchant Account
-        </button>
-        <div id="merchantAccountList"></div>
-      </div>
+        <div class="card span-4">
+          <h2>Merchant Accounts</h2>
+          <select id="merchantStoreId"></select>
+          <input id="merchantLogin" placeholder="Merchant login" />
+          <input id="merchantPassword" placeholder="Merchant password" />
+          <button onclick="saveMerchantAccount()" style="margin-bottom: 14px">
+            Save Merchant Account
+          </button>
+          <div id="merchantAccountList"></div>
+        </div>
 
-      <div class="card">
-        <h2>Store Analytics</h2>
-        <button onclick="loadStoreAnalytics()" style="margin-bottom: 14px">
-          Refresh Store Analytics
-        </button>
-        <div id="storeAnalyticsList"></div>
-      </div>
+        <div class="card span-4">
+          <div class="button-row" style="align-items: center; margin-bottom: 14px">
+            <h2 style="margin: 0; flex: 1">Store Analytics</h2>
+            <button class="edit" onclick="loadStoreAnalytics()" style="max-width: 220px; margin: 0">
+              Refresh
+            </button>
+          </div>
+          <div id="storeAnalyticsList"></div>
+        </div>
 
-      <div class="card">
-        <h2>Audit Log</h2>
-        <button onclick="loadAuditLogs()" style="margin-bottom: 14px">
-          Refresh Audit Log
-        </button>
-        <div id="auditLogList"></div>
+        <div class="card span-8">
+          <div class="button-row" style="align-items: center; margin-bottom: 14px">
+            <h2 style="margin: 0; flex: 1">Audit Log</h2>
+            <button class="edit" onclick="loadAuditLogs()" style="max-width: 220px; margin: 0">
+              Refresh
+            </button>
+          </div>
+          <div id="auditLogList"></div>
+        </div>
       </div>
     </div>
 
