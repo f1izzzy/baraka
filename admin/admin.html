@@ -167,6 +167,43 @@
         z-index: 1;
       }
 
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .card-body {
+        overflow: hidden;
+      }
+
+      .card.collapsed .card-body {
+        display: none;
+      }
+
+      .section-toggle {
+        width: auto;
+        min-width: 48px;
+        padding: 12px 14px;
+        margin: 0;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--text);
+        box-shadow: 0 10px 24px rgba(89, 53, 30, 0.05);
+        flex-shrink: 0;
+      }
+
+      .section-toggle .chevron {
+        display: inline-block;
+        transition: transform 0.18s ease;
+      }
+
+      .card.collapsed .section-toggle .chevron {
+        transform: rotate(-90deg);
+      }
+
       h2 {
         margin: 0 0 14px;
         font-family: "Space Grotesk", "Manrope", Arial, sans-serif;
@@ -342,7 +379,7 @@
         </p>
       </div>
 
-      <div class="card span-12">
+      <div class="card span-12" id="summaryCard">
         <div class="button-row" style="align-items: center; margin-bottom: 14px">
           <h2 style="margin: 0; flex: 1">Dashboard Summary</h2>
           <button class="edit" onclick="loadDashboardSummary()" style="max-width: 220px; margin: 0">
@@ -353,7 +390,7 @@
       </div>
 
       <div class="dashboard-grid">
-        <div class="card span-6">
+        <div class="card span-6" id="storeFormCard">
           <h2 id="storeFormTitle">Add Store</h2>
           <input type="hidden" id="editStoreId" />
           <input id="storeName" placeholder="Store name" />
@@ -368,7 +405,7 @@
           <button onclick="saveStore()">Save Store</button>
         </div>
 
-        <div class="card span-6">
+        <div class="card span-6" id="productFormCard">
           <h2 id="productFormTitle">Add Product</h2>
           <input type="hidden" id="editProductId" />
           <select id="productStoreId"></select>
@@ -393,17 +430,17 @@
           <button onclick="saveProduct()">Save Product</button>
         </div>
 
-        <div class="card span-6">
+        <div class="card span-6" id="allStoresCard">
           <h2>All Stores</h2>
           <div id="storeList"></div>
         </div>
 
-        <div class="card span-6">
+        <div class="card span-6" id="allProductsCard">
           <h2>All Products</h2>
           <div id="productList"></div>
         </div>
 
-        <div class="card span-8">
+        <div class="card span-8" id="redeemHistoryCard">
           <div class="button-row" style="align-items: center; margin-bottom: 14px">
             <h2 style="margin: 0; flex: 1">Redeem History</h2>
             <button class="edit" onclick="setupBotWebhook()" style="max-width: 220px; margin: 0">
@@ -429,7 +466,7 @@
           <div id="activationList"></div>
         </div>
 
-        <div class="card span-4">
+        <div class="card span-4" id="merchantAccountsCard">
           <h2>Merchant Accounts</h2>
           <select id="merchantStoreId"></select>
           <input id="merchantLogin" placeholder="Merchant login" />
@@ -440,7 +477,7 @@
           <div id="merchantAccountList"></div>
         </div>
 
-        <div class="card span-4">
+        <div class="card span-4" id="storeAnalyticsCard">
           <div class="button-row" style="align-items: center; margin-bottom: 14px">
             <h2 style="margin: 0; flex: 1">Store Analytics</h2>
             <button class="edit" onclick="loadStoreAnalytics()" style="max-width: 220px; margin: 0">
@@ -450,7 +487,7 @@
           <div id="storeAnalyticsList"></div>
         </div>
 
-        <div class="card span-8">
+        <div class="card span-8" id="auditLogCard">
           <div class="button-row" style="align-items: center; margin-bottom: 14px">
             <h2 style="margin: 0; flex: 1">Audit Log</h2>
             <button class="edit" onclick="loadAuditLogs()" style="max-width: 220px; margin: 0">
@@ -474,6 +511,18 @@
       let auditLogsCache = [];
       let dashboardSummaryCache = null;
       let storeAnalyticsCache = [];
+      const SECTION_STORAGE_KEY = "baraka-admin-section-state";
+      const SECTION_CONFIG = [
+        { selector: "#summaryCard", key: "summary", defaultOpen: true },
+        { selector: "#storeFormCard", key: "store-form", defaultOpen: true },
+        { selector: "#productFormCard", key: "product-form", defaultOpen: false },
+        { selector: "#allStoresCard", key: "stores", defaultOpen: false },
+        { selector: "#allProductsCard", key: "products", defaultOpen: false },
+        { selector: "#redeemHistoryCard", key: "redeem-history", defaultOpen: true },
+        { selector: "#merchantAccountsCard", key: "merchant-accounts", defaultOpen: false },
+        { selector: "#storeAnalyticsCard", key: "store-analytics", defaultOpen: false },
+        { selector: "#auditLogCard", key: "audit-log", defaultOpen: false },
+      ];
 
       function getAdminKey() {
         let key = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -486,6 +535,109 @@
         }
 
         return (key || "").trim();
+      }
+
+      function getSectionState() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(SECTION_STORAGE_KEY) || "{}");
+          return SECTION_CONFIG.reduce((acc, section) => {
+            acc[section.key] =
+              typeof saved[section.key] === "boolean"
+                ? saved[section.key]
+                : section.defaultOpen;
+            return acc;
+          }, {});
+        } catch {
+          return SECTION_CONFIG.reduce((acc, section) => {
+            acc[section.key] = section.defaultOpen;
+            return acc;
+          }, {});
+        }
+      }
+
+      function saveSectionState(state) {
+        localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(state));
+      }
+
+      function applySectionState() {
+        const state = getSectionState();
+
+        SECTION_CONFIG.forEach((section) => {
+          const card = document.querySelector(section.selector);
+          if (!card) return;
+          card.classList.toggle("collapsed", !state[section.key]);
+        });
+      }
+
+      function toggleSection(sectionKey) {
+        const state = getSectionState();
+        state[sectionKey] = !state[sectionKey];
+        saveSectionState(state);
+        applySectionState();
+      }
+
+      function openSection(sectionKey) {
+        const state = getSectionState();
+        state[sectionKey] = true;
+        saveSectionState(state);
+        applySectionState();
+      }
+
+      function initializeCollapsibleCards() {
+        SECTION_CONFIG.forEach((section) => {
+          const card = document.querySelector(section.selector);
+          if (!card || card.dataset.collapsibleReady === "true") return;
+
+          const firstChild = card.firstElementChild;
+          let titleEl = card.querySelector("h2");
+          if (!titleEl) return;
+
+          let actionButtons = [];
+
+          if (firstChild?.classList?.contains("button-row") && firstChild.querySelector("h2")) {
+            titleEl = firstChild.querySelector("h2");
+            actionButtons = Array.from(firstChild.children).filter(
+              (node) => node !== titleEl,
+            );
+            firstChild.remove();
+          } else {
+            titleEl.remove();
+          }
+
+          const body = document.createElement("div");
+          body.className = "card-body";
+
+          Array.from(card.children).forEach((child) => {
+            body.appendChild(child);
+          });
+
+          const head = document.createElement("div");
+          head.className = "card-head";
+          titleEl.style.margin = "0";
+          titleEl.style.flex = "1";
+          head.appendChild(titleEl);
+
+          const actions = document.createElement("div");
+          actions.className = "button-row tight";
+
+          actionButtons.forEach((button) => {
+            button.style.margin = "0";
+            actions.appendChild(button);
+          });
+
+          const toggle = document.createElement("button");
+          toggle.className = "section-toggle";
+          toggle.innerHTML = '<span class="chevron">▾</span>';
+          toggle.onclick = () => toggleSection(section.key);
+          actions.appendChild(toggle);
+
+          head.appendChild(actions);
+          card.appendChild(head);
+          card.appendChild(body);
+          card.insertBefore(head, card.firstChild);
+          card.insertBefore(body, head.nextSibling);
+          card.dataset.collapsibleReady = "true";
+        });
       }
 
       async function apiFetch(path, options = {}) {
@@ -619,6 +771,7 @@
         document.getElementById("storeCoverImage").value =
           store.coverImage || "";
         document.getElementById("storeLogo").value = store.logo || "";
+        openSection("store-form");
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
 
@@ -646,6 +799,7 @@
         document.getElementById("productExpirationDate").value =
           product.expirationDate || "";
         document.getElementById("productImage").value = product.image || "";
+        openSection("product-form");
         window.scrollTo({ top: 240, behavior: "smooth" });
       }
 
@@ -1057,6 +1211,8 @@
         .getElementById("activationSearch")
         .addEventListener("input", renderActivationHistory);
 
+      initializeCollapsibleCards();
+      applySectionState();
       loadAll();
     </script>
   </body>
