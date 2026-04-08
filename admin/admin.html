@@ -153,6 +153,42 @@
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
       }
 
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+
+      .summary-item {
+        border-radius: 20px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      }
+
+      .summary-label {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 6px;
+      }
+
+      .summary-value {
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .button-row button {
+        margin: 0;
+      }
+
       .mini {
         color: #666;
         font-size: 14px;
@@ -176,6 +212,14 @@
         <p class="subtitle">
           Create, edit and delete stores and fashion products.
         </p>
+      </div>
+
+      <div class="card">
+        <h2>Dashboard Summary</h2>
+        <button onclick="loadDashboardSummary()" style="margin-bottom: 14px">
+          Refresh Dashboard
+        </button>
+        <div class="summary-grid" id="dashboardSummary"></div>
       </div>
 
       <div class="card">
@@ -264,6 +308,14 @@
       </div>
 
       <div class="card">
+        <h2>Store Analytics</h2>
+        <button onclick="loadStoreAnalytics()" style="margin-bottom: 14px">
+          Refresh Store Analytics
+        </button>
+        <div id="storeAnalyticsList"></div>
+      </div>
+
+      <div class="card">
         <h2>Audit Log</h2>
         <button onclick="loadAuditLogs()" style="margin-bottom: 14px">
           Refresh Audit Log
@@ -282,6 +334,8 @@
       let activationsCache = [];
       let merchantAccountsCache = [];
       let auditLogsCache = [];
+      let dashboardSummaryCache = null;
+      let storeAnalyticsCache = [];
 
       function getAdminKey() {
         let key = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -658,6 +712,44 @@
         await loadMerchantAccounts();
       }
 
+      async function toggleMerchantAccount(id, nextState) {
+        const res = await apiFetch(`/api/admin/merchant-accounts/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: nextState }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        await loadMerchantAccounts();
+        await loadAuditLogs();
+      }
+
+      async function changeMerchantPassword(id, login) {
+        const password = prompt(`New password for ${login}`);
+        if (!password) return;
+
+        const res = await apiFetch(`/api/admin/merchant-accounts/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        alert(`Password updated for ${login}`);
+        await loadMerchantAccounts();
+        await loadAuditLogs();
+      }
+
       async function loadMerchantAccounts() {
         const list = document.getElementById("merchantAccountList");
         list.innerHTML = "Loading...";
@@ -681,6 +773,69 @@
             <span class="mini">Login: ${account.login}</span><br>
             <span class="mini">Status: ${account.isActive ? "Active" : "Disabled"}</span><br>
             <span class="mini">Updated: ${account.updatedAt ? new Date(account.updatedAt).toLocaleString() : "-"}</span>
+            <div class="button-row">
+              <button class="edit" onclick="changeMerchantPassword('${account._id}', '${account.login}')">Change Password</button>
+              <button class="${account.isActive ? "danger" : "edit"}" onclick="toggleMerchantAccount('${account._id}', ${account.isActive ? "false" : "true"})">
+                ${account.isActive ? "Disable" : "Enable"}
+              </button>
+            </div>
+          `;
+          list.appendChild(item);
+        });
+      }
+
+      async function loadDashboardSummary() {
+        const container = document.getElementById("dashboardSummary");
+        container.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/dashboard-summary");
+        const data = await res.json();
+        dashboardSummaryCache = data;
+
+        if (data.error) {
+          container.innerHTML = `<div class="mini">${data.error}</div>`;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="summary-item"><div class="summary-label">Stores</div><div class="summary-value">${data.stores || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Products</div><div class="summary-value">${data.products || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Active Merchants</div><div class="summary-value">${data.activeMerchants || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Total Activations</div><div class="summary-value">${data.totalActivations || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Redeemed</div><div class="summary-value">${data.redeemedActivations || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Active</div><div class="summary-value">${data.activeActivations || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Expired</div><div class="summary-value">${data.expiredActivations || 0}</div></div>
+          <div class="summary-item"><div class="summary-label">Last Redeem</div><div class="summary-value" style="font-size:16px">${data.lastRedeemedAt ? new Date(data.lastRedeemedAt).toLocaleString() : "-"}</div></div>
+        `;
+      }
+
+      async function loadStoreAnalytics() {
+        const list = document.getElementById("storeAnalyticsList");
+        list.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/store-analytics");
+        const data = await res.json();
+        storeAnalyticsCache = Array.isArray(data) ? data : [];
+
+        list.innerHTML = "";
+
+        if (!storeAnalyticsCache.length) {
+          list.innerHTML = `<div class="mini">No analytics yet.</div>`;
+          return;
+        }
+
+        storeAnalyticsCache.forEach((store) => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+          item.innerHTML = `
+            <strong>${store.name}</strong><br>
+            <span class="mini">Products: ${store.productCount}</span><br>
+            <span class="mini">Activations: ${store.activationCount}</span><br>
+            <span class="mini">Redeemed: ${store.redeemedCount}</span><br>
+            <span class="mini">Active: ${store.activeCount}</span><br>
+            <span class="mini">Expired: ${store.expiredCount}</span><br>
+            <span class="mini">Last activated: ${store.lastActivatedAt ? new Date(store.lastActivatedAt).toLocaleString() : "-"}</span><br>
+            <span class="mini">Last redeemed: ${store.lastRedeemedAt ? new Date(store.lastRedeemedAt).toLocaleString() : "-"}</span>
           `;
           list.appendChild(item);
         });
@@ -744,11 +899,13 @@
       }
 
       async function loadAll() {
+        await loadDashboardSummary();
         await loadStoresToSelect();
         await loadStoreList();
         await loadProductList();
         await loadActivationHistory();
         await loadMerchantAccounts();
+        await loadStoreAnalytics();
         await loadAuditLogs();
       }
 

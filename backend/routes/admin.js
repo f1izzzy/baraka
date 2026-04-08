@@ -9,6 +9,81 @@ function registerAdminRoutes(app, deps) {
     getAdminActorId,
   } = deps;
 
+  app.get("/api/admin/dashboard-summary", requireAdmin, async (req, res) => {
+    try {
+      const [storesRes, productsRes, merchantsRes, activationsRes] = await Promise.all([
+        pool.query(`select count(*)::int as count from stores`),
+        pool.query(`select count(*)::int as count from products`),
+        pool.query(`select count(*)::int as count from merchant_accounts where is_active = true`),
+        pool.query(`
+          select
+            count(*)::int as total_activations,
+            count(*) filter (where redeemed = true)::int as redeemed_activations,
+            count(*) filter (where redeemed = false and expires_at > $1)::int as active_activations,
+            count(*) filter (where redeemed = false and expires_at <= $1)::int as expired_activations,
+            max(redeemed_at) as last_redeemed_at
+          from activations
+        `, [Date.now()]),
+      ]);
+
+      res.json({
+        stores: storesRes.rows[0]?.count || 0,
+        products: productsRes.rows[0]?.count || 0,
+        activeMerchants: merchantsRes.rows[0]?.count || 0,
+        totalActivations: activationsRes.rows[0]?.total_activations || 0,
+        redeemedActivations: activationsRes.rows[0]?.redeemed_activations || 0,
+        activeActivations: activationsRes.rows[0]?.active_activations || 0,
+        expiredActivations: activationsRes.rows[0]?.expired_activations || 0,
+        lastRedeemedAt: activationsRes.rows[0]?.last_redeemed_at || null,
+      });
+    } catch (err) {
+      console.error("dashboard summary error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.get("/api/admin/store-analytics", requireAdmin, async (req, res) => {
+    try {
+      const result = await pool.query(
+        `
+        select
+          s.id,
+          s.name,
+          count(distinct p.id)::int as product_count,
+          count(distinct a.id)::int as activation_count,
+          count(distinct a.id) filter (where a.redeemed = true)::int as redeemed_count,
+          count(distinct a.id) filter (where a.redeemed = false and a.expires_at > $1)::int as active_count,
+          count(distinct a.id) filter (where a.redeemed = false and a.expires_at <= $1)::int as expired_count,
+          max(a.activated_at) as last_activated_at,
+          max(a.redeemed_at) as last_redeemed_at
+        from stores s
+        left join products p on p.store_id = s.id
+        left join activations a on a.store_id = s.id
+        group by s.id, s.name
+        order by redeemed_count desc, activation_count desc, s.name asc
+        `,
+        [Date.now()],
+      );
+
+      res.json(
+        result.rows.map((row) => ({
+          _id: row.id,
+          name: row.name,
+          productCount: row.product_count || 0,
+          activationCount: row.activation_count || 0,
+          redeemedCount: row.redeemed_count || 0,
+          activeCount: row.active_count || 0,
+          expiredCount: row.expired_count || 0,
+          lastActivatedAt: row.last_activated_at,
+          lastRedeemedAt: row.last_redeemed_at,
+        })),
+      );
+    } catch (err) {
+      console.error("store analytics error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.get("/api/admin/activations", requireAdmin, async (req, res) => {
     try {
       const result = await pool.query(`
@@ -183,6 +258,70 @@ function registerAdminRoutes(app, deps) {
       });
     } catch (err) {
       console.error("upsert merchant account error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.patch("/api/admin/merchant-accounts/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { password, isActive } = req.body;
+
+      const existingRes = await pool.query(
+        `select * from merchant_accounts where id = $1 limit 1`,
+        [id],
+      );
+
+      if (!existingRes.rows.length) {
+        return res.status(404).json({ error: "Merchant account not found" });
+      }
+
+      const existing = existingRes.rows[0];
+      const nextPasswordHash =
+        password && String(password).trim()
+          ? hashMerchantPassword(password)
+          : existing.password_hash;
+      const nextIsActive =
+        typeof isActive === "boolean" ? isActive : existing.is_active;
+
+      const updated = await pool.query(
+        `
+        update merchant_accounts
+        set
+          password_hash = $2,
+          is_active = $3,
+          updated_at = now()
+        where id = $1
+        returning *
+        `,
+        [id, nextPasswordHash, nextIsActive],
+      );
+
+      await writeAuditLog({
+        actorType: "admin",
+        actorId: getAdminActorId(),
+        action: "merchant_account_updated",
+        entityType: "merchant_account",
+        entityId: id,
+        metadata: {
+          login: updated.rows[0].login,
+          isActive: updated.rows[0].is_active,
+          passwordChanged: Boolean(password && String(password).trim()),
+        },
+      });
+
+      res.json({
+        success: true,
+        merchantAccount: {
+          _id: updated.rows[0].id,
+          storeId: updated.rows[0].store_id,
+          login: updated.rows[0].login,
+          isActive: updated.rows[0].is_active,
+          updatedAt: updated.rows[0].updated_at,
+        },
+      });
+    } catch (err) {
+      console.error("update merchant account error:", err);
       res.status(500).json({ error: "Server error" });
     }
   });
