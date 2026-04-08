@@ -496,44 +496,16 @@
           const parsed = JSON.parse(payload);
 
           if (!parsed.activationId) {
-            setResult(resultElId, "❌ Invalid QR payload", "error");
+            setResult(resultElId, "Invalid QR payload", "error");
             return;
           }
 
           setResult(resultElId, "QR decoded. Review items below.", "success");
 
           await loadActivationPreviewSecure(parsed.activationId);
-        } catch (e) {
-          setResult(resultElId, "❌ Invalid QR payload", "error");
+        } catch {
+          setResult(resultElId, "Invalid QR payload", "error");
         }
-      }
-
-      async function loadActivationPreview(activationId) {
-        const res = await fetch(`${API_BASE}/api/activations`);
-        const activations = await res.json();
-
-        const activation = activations.find((a) => a._id === activationId);
-
-        if (!activation) {
-          setResult("redeemResult", "❌ Activation not found", "error");
-          return;
-        }
-
-        const storeRes = await fetch(
-          `${API_BASE}/api/stores/${activation.storeId}`,
-        );
-        const storeData = await storeRes.json();
-
-        const selectedProducts = (activation.productIds || [])
-          .map((id) => (storeData.products || []).find((p) => p._id === id))
-          .filter(Boolean);
-
-        fillRedeemBox({
-          activationId: activation._id,
-          telegramId: activation.telegramId,
-          storeId: storeData.store?.name || activation.storeId,
-          products: selectedProducts,
-        });
       }
 
       async function loadActivationPreviewSecure(activationId) {
@@ -549,7 +521,7 @@
         const data = await res.json();
 
         if (data.error || !data.activation) {
-          setResult("redeemResult", "вќЊ Activation not found", "error");
+          setResult("redeemResult", "Activation not found", "error");
           return;
         }
 
@@ -581,7 +553,7 @@
           const data = await res.json();
 
           if (data.error) {
-            setResult("redeemResult", `❌ ${data.error}`, "error");
+            setResult("redeemResult", data.error, "error");
             return;
           }
 
@@ -591,13 +563,13 @@
 
           setResult(
             "redeemResult",
-            `✅ Redeemed successfully${productNames ? `: ${productNames}` : ""}`,
+            `Redeemed successfully${productNames ? `: ${productNames}` : ""}`,
             "success",
           );
 
           setResult("scanResult", "Redeemed successfully.", "success");
         } catch (err) {
-          setResult("redeemResult", "❌ Redeem failed", "error");
+          setResult("redeemResult", "Redeem failed", "error");
         } finally {
           setTimeout(() => {
             isProcessing = false;
@@ -609,7 +581,7 @@
         const payload = document.getElementById("manualPayload").value.trim();
 
         if (!payload) {
-          setResult("manualResult", "❌ Paste QR payload first", "error");
+          setResult("manualResult", "Paste QR payload first", "error");
           return;
         }
 
@@ -651,12 +623,12 @@
           if (activeCam) {
             setResult(
               "scanResult",
-              `📷 Camera: ${activeCam.label || "Active camera"}`,
+              `Camera: ${activeCam.label || "Active camera"}`,
               "default",
             );
           }
         } catch (err) {
-          setResult("scanResult", "❌ Camera error: " + err, "error");
+          setResult("scanResult", "Camera error: " + err, "error");
         }
       }
 
@@ -665,7 +637,7 @@
           cameras = await Html5Qrcode.getCameras();
 
           if (!cameras || cameras.length === 0) {
-            setResult("scanResult", "❌ No camera found", "error");
+            setResult("scanResult", "No camera found", "error");
             return;
           }
 
@@ -684,7 +656,7 @@
         } catch (err) {
           setResult(
             "scanResult",
-            "❌ Unable to access camera: " + err,
+            "Unable to access camera: " + err,
             "error",
           );
         }
@@ -692,7 +664,7 @@
 
       async function switchCamera() {
         if (!cameras || cameras.length < 2) {
-          setResult("scanResult", "ℹ️ Only one camera available", "default");
+          setResult("scanResult", "Only one camera available", "default");
           return;
         }
 

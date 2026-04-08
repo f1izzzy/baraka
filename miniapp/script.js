@@ -9,10 +9,6 @@ const API_BASE =
   window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
 const AUTO_REFRESH_MS = 15000;
 
-console.log("tg =", tg);
-console.log("rawTelegramUser =", rawTelegramUser);
-console.log("API_BASE =", API_BASE);
-
 let currentStoreId = null;
 let currentCategory = "All";
 let currentStoreProducts = [];
@@ -45,11 +41,9 @@ async function loginUser() {
     });
 
     const data = await res.json();
-    console.log("auth response =", data);
 
     if (data.user) {
       telegramUser = data.user;
-      console.log("Logged in user =", telegramUser);
     } else {
       console.warn("No user returned from backend");
     }
@@ -427,12 +421,6 @@ async function activateStore() {
 
 async function toggleFavorite(productId, btn) {
   const telegramId = getTelegramId();
-  console.log(
-    "toggleFavorite telegramId =",
-    telegramId,
-    "telegramUser =",
-    telegramUser,
-  );
 
   if (!telegramId) {
     alert("No Telegram user");
@@ -451,7 +439,6 @@ async function toggleFavorite(productId, btn) {
   });
 
   const data = await res.json();
-  console.log("toggleFavorite response =", data);
 
   if (data.isFavorite) {
     btn.classList.add("active");
@@ -713,12 +700,6 @@ function openProductStore(storeId) {
   document.getElementById("storesTab").classList.remove("hidden");
 
   openStore(storeId);
-}
-
-function reloadCurrentStore() {
-  if (currentStoreId) {
-    renderProducts(currentStoreProducts);
-  }
 }
 
 function openModal(qr, qrPayload, expiresAt) {

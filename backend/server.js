@@ -1466,46 +1466,6 @@ app.post("/api/auth/telegram", async (req, res) => {
   }
 });
 
-/* BOT */
-
-const BOT_TOKEN = "";
-
-if (!BOT_TOKEN) {
-  console.log("❌ BOT_TOKEN not found");
-} else {
-  const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-
-  async function startBot() {
-    try {
-      await bot.deleteWebHook();
-      await bot.startPolling();
-
-      bot.onText(/\/start/, (msg) => {
-        bot.sendMessage(msg.chat.id, "Open Baraka", {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "Open Baraka",
-                  web_app: {
-                    url: "https://baraka-miniapp.vercel.app",
-                  },
-                },
-              ],
-            ],
-          },
-        });
-      });
-
-      console.log("🤖 Bot started");
-    } catch (err) {
-      console.error("Bot start error:", err.message);
-    }
-  }
-
-  startBot();
-}
-
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
