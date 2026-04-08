@@ -157,20 +157,30 @@ async function openStore(storeId, category = "All") {
 
   renderSkeleton("products", 2);
 
-  const res = await fetch(`${API_BASE}/api/stores/${storeId}`);
-  const data = await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/stores/${storeId}`);
+    const data = await res.json();
 
-  renderStoreDetails(data.store);
-  currentStoreProducts = (data.products || []).map((p) => ({
-    ...p,
-    storeName: data.store?.name || "",
-  }));
-  renderCategoryFilters(currentStoreProducts);
-  renderProducts(currentStoreProducts);
+    if (!res.ok || !data.store) {
+      throw new Error(data.error || "Failed to load store");
+    }
 
-  setTimeout(() => {
-    document.body.style.opacity = "1";
-  }, 150);
+    renderStoreDetails(data.store);
+    currentStoreProducts = (data.products || []).map((p) => ({
+      ...p,
+      storeName: data.store?.name || "",
+    }));
+    renderCategoryFilters(currentStoreProducts);
+    renderProducts(currentStoreProducts);
+  } catch (err) {
+    console.error("openStore error:", err);
+    document.getElementById("products").innerHTML =
+      `<div class="empty-box">Failed to load products.</div>`;
+  } finally {
+    setTimeout(() => {
+      document.body.style.opacity = "1";
+    }, 150);
+  }
 }
 
 function renderStoreDetails(store) {
@@ -271,6 +281,7 @@ function renderProducts(products) {
       .map((size) => `<span class="size-chip">${size}</span>`)
       .join("");
 
+    const isFav = favoriteIds.includes(product._id);
     const isSelected = selectedProducts.includes(product._id);
 
     const card = document.createElement("div");
