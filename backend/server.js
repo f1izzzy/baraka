@@ -829,7 +829,124 @@ app.get("/api/activations", requireMerchant, async (req, res) => {
   }
 });
 
+app.get("/api/admin/activations", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      select
+        a.*,
+        s.name as store_name,
+        u.first_name as user_first_name,
+        u.username as user_username
+      from activations a
+      left join stores s on s.id = a.store_id
+      left join users u on u.telegram_id = a.telegram_id
+      order by a.activated_at desc
+    `);
+
+    res.json(
+      result.rows.map((a) => ({
+        _id: a.id,
+        telegramId: a.telegram_id,
+        storeId: a.store_id,
+        storeName: a.store_name || "",
+        userFirstName: a.user_first_name || "",
+        username: a.user_username || "",
+        productIds: a.product_ids || [],
+        activatedAt: a.activated_at,
+        expiresAt: a.expires_at,
+        redeemed: a.redeemed,
+        redeemedAt: a.redeemed_at,
+      })),
+    );
+  } catch (err) {
+    console.error("admin activations error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 /* TELEGRAM AUTH */
+
+async function telegramApi(method, body) {
+  const botToken = process.env.BOT_TOKEN;
+
+  if (!botToken) {
+    throw new Error("BOT_TOKEN is not configured");
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description || `Telegram API ${method} failed`);
+  }
+
+  return data.result;
+}
+
+app.post("/api/bot/webhook", async (req, res) => {
+  try {
+    const message = req.body?.message;
+    const text = message?.text || "";
+    const chatId = message?.chat?.id;
+
+    if (chatId && text.startsWith("/start")) {
+      await telegramApi("sendMessage", {
+        chat_id: chatId,
+        text: "Open Baraka",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "Open Baraka",
+                web_app: {
+                  url: "https://baraka-miniapp.vercel.app",
+                },
+              },
+            ],
+          ],
+        },
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("bot webhook error:", err);
+    res.status(500).json({ error: "Webhook failed" });
+  }
+});
+
+app.post("/api/admin/bot/set-webhook", requireAdmin, async (req, res) => {
+  try {
+    const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+
+    if (!webhookBaseUrl) {
+      return res.status(500).json({ error: "WEBHOOK_BASE_URL is not configured" });
+    }
+
+    const cleanedBaseUrl = webhookBaseUrl.replace(/\/+$/, "");
+    const webhookUrl = `${cleanedBaseUrl}/api/bot/webhook`;
+
+    await telegramApi("setWebhook", {
+      url: webhookUrl,
+      drop_pending_updates: true,
+    });
+
+    res.json({
+      success: true,
+      webhookUrl,
+    });
+  } catch (err) {
+    console.error("set webhook error:", err);
+    res.status(500).json({ error: "Failed to set Telegram webhook" });
+  }
+});
 
 app.post("/api/auth/telegram", async (req, res) => {
   try {

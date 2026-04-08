@@ -227,6 +227,17 @@
         <h2>All Products</h2>
         <div id="productList"></div>
       </div>
+
+      <div class="card">
+        <h2>Redeem History</h2>
+        <button onclick="setupBotWebhook()" style="margin-bottom: 10px">
+          Enable Telegram Bot
+        </button>
+        <button onclick="loadActivationHistory()" style="margin-bottom: 14px">
+          Refresh History
+        </button>
+        <div id="activationList"></div>
+      </div>
     </div>
 
     <script>
@@ -236,6 +247,7 @@
 
       let storesCache = [];
       let productsCache = [];
+      let activationsCache = [];
 
       function getAdminKey() {
         let key = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -488,6 +500,61 @@
         }
       }
 
+      async function loadActivationHistory() {
+        const activationList = document.getElementById("activationList");
+        activationList.innerHTML = "Loading...";
+
+        const res = await apiFetch("/api/admin/activations");
+        const activations = await res.json();
+        activationsCache = Array.isArray(activations) ? activations : [];
+
+        activationList.innerHTML = "";
+
+        if (!activationsCache.length) {
+          activationList.innerHTML = `<div class="mini">No activations yet.</div>`;
+          return;
+        }
+
+        activationsCache.forEach((activation) => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+
+          const status = activation.redeemed
+            ? "Redeemed"
+            : Date.now() > Number(activation.expiresAt)
+              ? "Expired"
+              : "Active";
+
+          item.innerHTML = `
+            <strong>${activation.storeName || "Store not found"}</strong><br>
+            <span class="mini">Status: ${status}</span><br>
+            <span class="mini">Telegram ID: ${activation.telegramId}</span><br>
+            <span class="mini">User: ${activation.userFirstName || "-"} ${activation.username ? `(@${activation.username})` : ""}</span><br>
+            <span class="mini">Products count: ${(activation.productIds || []).length}</span><br>
+            <span class="mini">Activated: ${activation.activatedAt ? new Date(activation.activatedAt).toLocaleString() : "-"}</span><br>
+            <span class="mini">Expires: ${activation.expiresAt ? new Date(Number(activation.expiresAt)).toLocaleString() : "-"}</span><br>
+            <span class="mini">Redeemed at: ${activation.redeemedAt ? new Date(activation.redeemedAt).toLocaleString() : "-"}</span><br>
+            <span class="mini">Activation ID: ${activation._id}</span>
+          `;
+
+          activationList.appendChild(item);
+        });
+      }
+
+      async function setupBotWebhook() {
+        const res = await apiFetch("/api/admin/bot/set-webhook", {
+          method: "POST",
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        alert(`Telegram bot enabled.\nWebhook: ${data.webhookUrl}`);
+      }
+
       async function deleteStore(id) {
         await apiFetch(`/api/stores/${id}`, {
           method: "DELETE",
@@ -506,6 +573,7 @@
         await loadStoresToSelect();
         await loadStoreList();
         await loadProductList();
+        await loadActivationHistory();
       }
 
       loadAll();
