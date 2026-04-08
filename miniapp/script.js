@@ -7,6 +7,7 @@ let telegramUser = null;
 
 const API_BASE =
   window.APP_CONFIG?.API_BASE || "https://baraka-backend-71az.onrender.com";
+const AUTO_REFRESH_MS = 15000;
 
 console.log("tg =", tg);
 console.log("rawTelegramUser =", rawTelegramUser);
@@ -18,6 +19,9 @@ let currentStoreProducts = [];
 let selectedProducts = [];
 let favoriteIds = [];
 let myDealsCache = [];
+let lastStoresSignature = "";
+let lastCurrentStoreSignature = "";
+let autoRefreshTimer = null;
 
 function getTelegramId() {
   return (
@@ -118,6 +122,12 @@ async function loadStores() {
   const res = await fetch(`${API_BASE}/api/stores`);
   const stores = await res.json();
 
+  renderStores(stores);
+}
+
+function renderStores(stores) {
+  lastStoresSignature = getStoresSignature(stores);
+
   const container = document.getElementById("stores");
   container.innerHTML = "";
 
@@ -165,13 +175,7 @@ async function openStore(storeId, category = "All") {
       throw new Error(data.error || "Failed to load store");
     }
 
-    renderStoreDetails(data.store);
-    currentStoreProducts = (data.products || []).map((p) => ({
-      ...p,
-      storeName: data.store?.name || "",
-    }));
-    renderCategoryFilters(currentStoreProducts);
-    renderProducts(currentStoreProducts);
+    applyStoreData(data);
   } catch (err) {
     console.error("openStore error:", err);
     document.getElementById("products").innerHTML =
@@ -181,6 +185,17 @@ async function openStore(storeId, category = "All") {
       document.body.style.opacity = "1";
     }, 150);
   }
+}
+
+function applyStoreData(data) {
+  lastCurrentStoreSignature = getCurrentStoreSignature(data);
+  renderStoreDetails(data.store);
+  currentStoreProducts = (data.products || []).map((p) => ({
+    ...p,
+    storeName: data.store?.name || "",
+  }));
+  renderCategoryFilters(currentStoreProducts);
+  renderProducts(currentStoreProducts);
 }
 
 function renderStoreDetails(store) {
@@ -228,6 +243,48 @@ function setCategory(category) {
   currentCategory = category;
   renderCategoryFilters(currentStoreProducts);
   renderProducts(currentStoreProducts);
+}
+
+function getStoresSignature(stores) {
+  return JSON.stringify(
+    (stores || []).map((store) => ({
+      id: store._id,
+      name: store.name,
+      description: store.description,
+      location: store.location,
+      address: store.address,
+      coverImage: store.coverImage,
+      logo: store.logo,
+      productCount: store.productCount,
+    })),
+  );
+}
+
+function getCurrentStoreSignature(data) {
+  return JSON.stringify({
+    store: {
+      id: data?.store?._id,
+      name: data?.store?.name,
+      description: data?.store?.description,
+      location: data?.store?.location,
+      address: data?.store?.address,
+      coverImage: data?.store?.coverImage,
+      logo: data?.store?.logo,
+    },
+    products: (data?.products || []).map((product) => ({
+      id: product._id,
+      title: product.title,
+      description: product.description,
+      category: product.category,
+      price: product.price,
+      oldPrice: product.oldPrice,
+      image: product.image,
+      sizes: product.sizes,
+      remainingQuantity: product.remainingQuantity,
+      views: product.views,
+      expirationDate: product.expirationDate,
+    })),
+  });
 }
 
 function getFilteredAndSortedProducts(products) {
@@ -726,6 +783,7 @@ function goHome() {
   currentStoreId = null;
   currentCategory = "All";
   currentStoreProducts = [];
+  lastCurrentStoreSignature = "";
 }
 
 function openProductStore(storeId) {
@@ -827,9 +885,75 @@ async function initApp() {
     document.getElementById("stores").innerHTML =
       `<div class="empty-box">Failed to load stores.</div>`;
   }
+
+  startAutoRefresh();
 }
 
 initApp();
+
+async function refreshLiveData() {
+  if (document.hidden) return;
+
+  try {
+    const storesTabVisible = !document
+      .getElementById("storesTab")
+      ?.classList.contains("hidden");
+    const favoritesTabVisible = !document
+      .getElementById("favoritesTab")
+      ?.classList.contains("hidden");
+    const myDealsTabVisible = !document
+      .getElementById("myDealsTab")
+      ?.classList.contains("hidden");
+
+    if (storesTabVisible && currentStoreId) {
+      const res = await fetch(`${API_BASE}/api/stores/${currentStoreId}`);
+      const data = await res.json();
+
+      if (res.ok && data.store) {
+        const nextSignature = getCurrentStoreSignature(data);
+        if (nextSignature !== lastCurrentStoreSignature) {
+          applyStoreData(data);
+          showToast("Store updated");
+        }
+      }
+      return;
+    }
+
+    if (storesTabVisible) {
+      const res = await fetch(`${API_BASE}/api/stores`);
+      const stores = await res.json();
+
+      if (res.ok) {
+        const nextSignature = getStoresSignature(stores);
+        if (nextSignature !== lastStoresSignature) {
+          renderStores(stores);
+          showToast("Stores updated");
+        }
+      }
+    }
+
+    if (favoritesTabVisible && getTelegramId()) {
+      await loadFavoriteIds();
+      await loadFavorites();
+    }
+
+    if (myDealsTabVisible && getTelegramId()) {
+      await loadMyDeals();
+    }
+  } catch (err) {
+    console.error("refreshLiveData error:", err);
+  }
+}
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+  }
+
+  autoRefreshTimer = setInterval(() => {
+    refreshLiveData();
+  }, AUTO_REFRESH_MS);
+}
 
 /* ===== RIPPLE EFFECT ===== */
 
