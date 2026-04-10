@@ -326,6 +326,42 @@ function registerAdminRoutes(app, deps) {
     }
   });
 
+  app.delete("/api/admin/merchant-accounts/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const existingRes = await pool.query(
+        `select * from merchant_accounts where id = $1 limit 1`,
+        [id],
+      );
+
+      if (!existingRes.rows.length) {
+        return res.status(404).json({ error: "Merchant account not found" });
+      }
+
+      const existing = existingRes.rows[0];
+
+      await pool.query(`delete from merchant_accounts where id = $1`, [id]);
+
+      await writeAuditLog({
+        actorType: "admin",
+        actorId: getAdminActorId(),
+        action: "merchant_account_deleted",
+        entityType: "merchant_account",
+        entityId: id,
+        metadata: {
+          login: existing.login,
+          storeId: existing.store_id,
+        },
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("delete merchant account error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.post("/api/merchant/login", async (req, res) => {
     try {
       const { login, password } = req.body;

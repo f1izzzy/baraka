@@ -1042,6 +1042,26 @@
         await loadAuditLogs();
       }
 
+      async function deleteMerchantAccount(id, login) {
+        const confirmed = confirm(
+          `Delete merchant account "${login}" permanently? This cannot be undone.`,
+        );
+        if (!confirmed) return;
+
+        const res = await apiFetch(`/api/admin/merchant-accounts/${id}`, {
+          method: "DELETE",
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        await loadMerchantAccounts();
+        await loadAuditLogs();
+      }
+
       async function loadMerchantAccounts() {
         const list = document.getElementById("merchantAccountList");
         list.innerHTML = "Loading...";
@@ -1070,6 +1090,7 @@
               <button class="${account.isActive ? "danger" : "edit"}" onclick="toggleMerchantAccount('${account._id}', ${account.isActive ? "false" : "true"})">
                 ${account.isActive ? "Disable" : "Enable"}
               </button>
+              <button class="danger" onclick="deleteMerchantAccount('${account._id}', '${account.login}')">Delete</button>
             </div>
           `;
           list.appendChild(item);
