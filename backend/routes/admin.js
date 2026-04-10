@@ -198,47 +198,35 @@ function registerAdminRoutes(app, deps) {
         [String(login).trim()],
       );
 
-      let account;
-
       if (existingRes.rows.length) {
-        const updated = await pool.query(
-          `
-          update merchant_accounts
-          set
-            store_id = $2,
-            password_hash = $3,
-            is_active = true,
-            updated_at = now()
-          where login = $1
-          returning *
-          `,
-          [String(login).trim(), storeId, hashMerchantPassword(password)],
-        );
-        account = updated.rows[0];
-      } else {
-        const inserted = await pool.query(
-          `
-          insert into merchant_accounts (
-            id, store_id, login, password_hash, is_active
-          )
-          values ($1, $2, $3, $4, $5)
-          returning *
-          `,
-          [
-            makeId(),
-            storeId,
-            String(login).trim(),
-            hashMerchantPassword(password),
-            true,
-          ],
-        );
-        account = inserted.rows[0];
+        return res.status(409).json({
+          error:
+            "Merchant login already exists. Use another login or change that account password.",
+        });
       }
+
+      const inserted = await pool.query(
+        `
+        insert into merchant_accounts (
+          id, store_id, login, password_hash, is_active
+        )
+        values ($1, $2, $3, $4, $5)
+        returning *
+        `,
+        [
+          makeId(),
+          storeId,
+          String(login).trim(),
+          hashMerchantPassword(password),
+          true,
+        ],
+      );
+      const account = inserted.rows[0];
 
       await writeAuditLog({
         actorType: "admin",
         actorId: getAdminActorId(),
-        action: "merchant_account_upserted",
+        action: "merchant_account_created",
         entityType: "merchant_account",
         entityId: account.id,
         metadata: {
@@ -257,7 +245,7 @@ function registerAdminRoutes(app, deps) {
         },
       });
     } catch (err) {
-      console.error("upsert merchant account error:", err);
+      console.error("create merchant account error:", err);
       res.status(500).json({ error: "Server error" });
     }
   });
