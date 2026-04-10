@@ -20,7 +20,23 @@ const { registerAdminRoutes } = require("./routes/admin");
 const { registerTelegramRoutes } = require("./routes/telegram");
 
 const app = express();
-app.use(cors());
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || !CORS_ORIGINS.length || CORS_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origin not allowed by CORS"));
+    },
+  }),
+);
 app.use(express.json());
 app.use(requestLogger);
 
@@ -45,6 +61,34 @@ const telegramApi = createTelegramApi(BOT_TOKEN);
 const requireAdmin = createRequireAdmin({
   adminApiKey: ADMIN_API_KEY,
   getApiKey,
+});
+
+app.get("/api/health", async (_req, res) => {
+  try {
+    await pool.query("select 1");
+
+    res.json({
+      ok: true,
+      service: "baraka-backend",
+      database: "up",
+      timestamp: new Date().toISOString(),
+      env: {
+        adminApiKeyConfigured: Boolean(ADMIN_API_KEY),
+        merchantApiKeyConfigured: Boolean(MERCHANT_API_KEY),
+        merchantTokenSecretConfigured: Boolean(MERCHANT_TOKEN_SECRET),
+        botTokenConfigured: Boolean(BOT_TOKEN),
+        corsOriginsConfigured: CORS_ORIGINS.length,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      service: "baraka-backend",
+      database: "down",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
 });
 
 registerCatalogRoutes(app, {
