@@ -327,6 +327,47 @@
         line-height: 1.6;
       }
 
+      .bulk-help {
+        padding: 14px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.68);
+        color: var(--text-soft);
+        font-size: 14px;
+        line-height: 1.7;
+        margin-bottom: 12px;
+      }
+
+      .bulk-textarea {
+        min-height: 190px;
+        font-family: "Manrope", Arial, sans-serif;
+      }
+
+      .bulk-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .bulk-preview-card {
+        border-radius: 22px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: var(--shadow-md);
+      }
+
+      .bulk-preview-card strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .bulk-preview-card input,
+      .bulk-preview-card textarea {
+        margin-bottom: 8px;
+      }
+
       img.preview {
         width: 100%;
         max-width: 180px;
@@ -430,6 +471,36 @@
           <button onclick="saveProduct()">Save Product</button>
         </div>
 
+        <div class="card span-12" id="bulkImportCard">
+          <div class="button-row" style="align-items: center; margin-bottom: 14px">
+            <h2 style="margin: 0; flex: 1">Bulk Import Products</h2>
+            <button class="edit" onclick="fillBulkImportExample()" style="max-width: 220px; margin: 0">
+              Add Example
+            </button>
+          </div>
+          <div class="bulk-help">
+            Paste many products at once. One product per line. Best format:
+            <strong>Title | Description | Category | New price | Old price | Sizes | Quantity | Image URL | Expiration YYYY-MM-DD</strong>.
+            The local AI cleanup will normalize titles, infer missing categories, and improve short descriptions before preview.
+          </div>
+          <select id="bulkStoreId"></select>
+          <textarea
+            id="bulkImportText"
+            class="bulk-textarea"
+            placeholder="Black Satin Dress | Evening dress with soft satin finish | Dress | 49 | 89 | S, M, L | 4 | https://... | 2026-05-01"
+          ></textarea>
+          <div class="button-row">
+            <button class="edit" onclick="generateBulkDraft()">Generate Draft</button>
+            <button onclick="runBulkAiCleanup()">AI Cleanup</button>
+            <button class="danger" onclick="clearBulkImport()">Clear</button>
+          </div>
+          <div id="bulkImportStatus" class="mini"></div>
+          <div id="bulkImportPreview" class="bulk-preview-grid"></div>
+          <button id="bulkImportButton" onclick="importBulkProducts()" style="display:none; margin-top: 14px">
+            Import All Products
+          </button>
+        </div>
+
         <div class="card span-6" id="allStoresCard">
           <h2>All Stores</h2>
           <div id="storeList"></div>
@@ -511,11 +582,13 @@
       let auditLogsCache = [];
       let dashboardSummaryCache = null;
       let storeAnalyticsCache = [];
+      let bulkDraftProducts = [];
       const SECTION_STORAGE_KEY = "baraka-admin-section-state";
       const SECTION_CONFIG = [
         { selector: "#summaryCard", key: "summary", defaultOpen: true },
         { selector: "#storeFormCard", key: "store-form", defaultOpen: true },
         { selector: "#productFormCard", key: "product-form", defaultOpen: false },
+        { selector: "#bulkImportCard", key: "bulk-import", defaultOpen: false },
         { selector: "#allStoresCard", key: "stores", defaultOpen: false },
         { selector: "#allProductsCard", key: "products", defaultOpen: false },
         { selector: "#redeemHistoryCard", key: "redeem-history", defaultOpen: true },
@@ -581,6 +654,80 @@
         state[sectionKey] = true;
         saveSectionState(state);
         applySectionState();
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function toTitleCase(value) {
+        return String(value || "")
+          .trim()
+          .replace(/\s+/g, " ")
+          .toLowerCase()
+          .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+      }
+
+      function inferCategory(text) {
+        const normalized = String(text || "").toLowerCase();
+        const rules = [
+          ["Dress", ["dress", "плать", "ko'ylak", "koylak"]],
+          ["Shoes", ["shoe", "heels", "sneaker", "обув", "туфл", "oyoq"]],
+          ["Bag", ["bag", "сумк", "sumka"]],
+          ["Jacket", ["jacket", "coat", "куртк", "пальто", "kurtka"]],
+          ["Jeans", ["jeans", "denim", "джинс"]],
+          ["Shirt", ["shirt", "blouse", "рубаш", "блуз", "kofta"]],
+          ["Skirt", ["skirt", "юбк"]],
+          ["Accessories", ["belt", "scarf", "access", "ремень", "аксесс"]],
+        ];
+
+        for (const [category, keywords] of rules) {
+          if (keywords.some((keyword) => normalized.includes(keyword))) {
+            return category;
+          }
+        }
+
+        return "Other";
+      }
+
+      function parsePrice(value) {
+        const number = String(value || "").replace(/[^0-9.]/g, "");
+        return Number(number) || 0;
+      }
+
+      function normalizeSizes(value) {
+        return String(value || "")
+          .split(/[,\s/]+/)
+          .map((size) => size.trim().toUpperCase())
+          .filter(Boolean)
+          .filter((size, index, list) => list.indexOf(size) === index)
+          .join(", ");
+      }
+
+      function aiCleanupProduct(product) {
+        const title = toTitleCase(product.title);
+        const category = product.category?.trim() || inferCategory(`${title} ${product.description}`);
+        const description =
+          String(product.description || "").trim() ||
+          `${title} from the ${category.toLowerCase()} selection, ready for in-store redemption through Baraka.`;
+
+        return {
+          ...product,
+          title,
+          description,
+          category,
+          sizes: normalizeSizes(product.sizes),
+          price: Number(product.price) || 0,
+          oldPrice: Number(product.oldPrice) || 0,
+          remainingQuantity: Number(product.remainingQuantity) || 1,
+          image: String(product.image || "").trim(),
+          expirationDate: String(product.expirationDate || "").trim(),
+        };
       }
 
       function initializeCollapsibleCards() {
@@ -732,6 +879,174 @@
         await loadAll();
       }
 
+      function fillBulkImportExample() {
+        document.getElementById("bulkImportText").value = [
+          "Black Satin Dress | Evening dress with soft satin finish | Dress | 49 | 89 | S, M, L | 4 | https://picsum.photos/500/700?random=11 | 2026-05-01",
+          "Ivory Blazer | Clean tailored blazer for everyday looks | Jacket | 59 | 110 | S, M | 3 | https://picsum.photos/500/700?random=12 | 2026-05-01",
+          "Mini Leather Bag | Compact city bag with gold-tone detail | Bag | 35 | 65 | One Size | 5 | https://picsum.photos/500/700?random=13 | 2026-05-01",
+        ].join("\n");
+        generateBulkDraft();
+      }
+
+      function parseBulkLine(line) {
+        const parts = line
+          .split("|")
+          .map((part) => part.trim())
+          .filter((part, index) => index === 0 || part);
+
+        if (parts.length >= 4) {
+          return aiCleanupProduct({
+            title: parts[0],
+            description: parts[1],
+            category: parts[2],
+            price: parsePrice(parts[3]),
+            oldPrice: parsePrice(parts[4]),
+            sizes: parts[5] || "",
+            remainingQuantity: Number(parts[6]) || 1,
+            image: parts[7] || "",
+            expirationDate: parts[8] || "",
+          });
+        }
+
+        const priceMatches = line.match(/\d+(?:\.\d+)?/g) || [];
+        const title = line
+          .replace(/https?:\/\/\S+/gi, "")
+          .replace(/\d+(?:\.\d+)?/g, "")
+          .replace(/[$,|;-]+/g, " ")
+          .trim();
+        const image = (line.match(/https?:\/\/\S+/i) || [""])[0];
+        const price = parsePrice(priceMatches[0]);
+        const oldPrice = parsePrice(priceMatches[1]);
+
+        return aiCleanupProduct({
+          title,
+          description: "",
+          category: "",
+          price,
+          oldPrice,
+          sizes: "",
+          remainingQuantity: 1,
+          image,
+          expirationDate: "",
+        });
+      }
+
+      function generateBulkDraft() {
+        const text = document.getElementById("bulkImportText").value;
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        bulkDraftProducts = lines
+          .map(parseBulkLine)
+          .filter((product) => product.title && product.price > 0);
+
+        renderBulkPreview();
+      }
+
+      function runBulkAiCleanup() {
+        if (!bulkDraftProducts.length) {
+          generateBulkDraft();
+          return;
+        }
+
+        bulkDraftProducts = bulkDraftProducts.map(aiCleanupProduct);
+        renderBulkPreview();
+      }
+
+      function updateBulkDraft(index, field, value) {
+        if (!bulkDraftProducts[index]) return;
+
+        const numericFields = ["price", "oldPrice", "remainingQuantity"];
+        bulkDraftProducts[index][field] = numericFields.includes(field)
+          ? Number(value) || 0
+          : value;
+      }
+
+      function removeBulkDraftProduct(index) {
+        bulkDraftProducts.splice(index, 1);
+        renderBulkPreview();
+      }
+
+      function renderBulkPreview() {
+        const status = document.getElementById("bulkImportStatus");
+        const preview = document.getElementById("bulkImportPreview");
+        const importButton = document.getElementById("bulkImportButton");
+
+        preview.innerHTML = "";
+
+        if (!bulkDraftProducts.length) {
+          status.textContent =
+            "No valid products found yet. Use the pipe format or add at least a title and price per line.";
+          importButton.style.display = "none";
+          return;
+        }
+
+        status.textContent = `${bulkDraftProducts.length} product drafts ready. Review before import.`;
+        importButton.style.display = "block";
+
+        bulkDraftProducts.forEach((product, index) => {
+          const card = document.createElement("div");
+          card.className = "bulk-preview-card";
+          card.innerHTML = `
+            <strong>Draft #${index + 1}</strong>
+            <input value="${escapeHtml(product.title)}" onchange="updateBulkDraft(${index}, 'title', this.value)" placeholder="Title" />
+            <textarea onchange="updateBulkDraft(${index}, 'description', this.value)" placeholder="Description">${escapeHtml(product.description)}</textarea>
+            <input value="${escapeHtml(product.category)}" onchange="updateBulkDraft(${index}, 'category', this.value)" placeholder="Category" />
+            <input value="${escapeHtml(product.price)}" onchange="updateBulkDraft(${index}, 'price', this.value)" placeholder="New price" />
+            <input value="${escapeHtml(product.oldPrice)}" onchange="updateBulkDraft(${index}, 'oldPrice', this.value)" placeholder="Old price" />
+            <input value="${escapeHtml(product.sizes)}" onchange="updateBulkDraft(${index}, 'sizes', this.value)" placeholder="Sizes" />
+            <input value="${escapeHtml(product.remainingQuantity)}" onchange="updateBulkDraft(${index}, 'remainingQuantity', this.value)" placeholder="Quantity" />
+            <input value="${escapeHtml(product.image)}" onchange="updateBulkDraft(${index}, 'image', this.value)" placeholder="Image URL" />
+            <input value="${escapeHtml(product.expirationDate)}" onchange="updateBulkDraft(${index}, 'expirationDate', this.value)" placeholder="Expiration date" />
+            <button class="danger" onclick="removeBulkDraftProduct(${index})">Remove Draft</button>
+          `;
+          preview.appendChild(card);
+        });
+      }
+
+      function clearBulkImport() {
+        document.getElementById("bulkImportText").value = "";
+        bulkDraftProducts = [];
+        renderBulkPreview();
+      }
+
+      async function importBulkProducts() {
+        const storeId = document.getElementById("bulkStoreId").value;
+
+        if (!storeId) {
+          alert("Choose a store first.");
+          return;
+        }
+
+        const products = bulkDraftProducts.map(aiCleanupProduct);
+        if (!products.length) {
+          alert("Generate a draft first.");
+          return;
+        }
+
+        const confirmed = confirm(`Import ${products.length} products now?`);
+        if (!confirmed) return;
+
+        const res = await apiFetch("/api/products/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storeId, products }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        alert(`Imported ${data.count || products.length} products.`);
+        clearBulkImport();
+        await loadAll();
+        openSection("products");
+      }
+
       function resetStoreForm() {
         document.getElementById("editStoreId").value = "";
         document.getElementById("storeFormTitle").textContent = "Add Store";
@@ -808,7 +1123,12 @@
         const stores = await res.json();
         storesCache = stores;
 
-        ["productStoreId", "merchantStoreId", "activationStoreFilter"].forEach(
+        [
+          "productStoreId",
+          "bulkStoreId",
+          "merchantStoreId",
+          "activationStoreFilter",
+        ].forEach(
           (selectId) => {
             const select = document.getElementById(selectId);
             if (!select) return;

@@ -312,6 +312,116 @@ function registerCatalogRoutes(app, deps) {
     }
   });
 
+  app.post("/api/products/bulk", requireAdmin, async (req, res) => {
+    try {
+      const { storeId, products } = req.body;
+
+      if (!storeId || !Array.isArray(products) || !products.length) {
+        return res
+          .status(400)
+          .json({ error: "storeId and products array are required" });
+      }
+
+      if (products.length > 200) {
+        return res
+          .status(400)
+          .json({ error: "Bulk import is limited to 200 products at once" });
+      }
+
+      const storeCheck = await pool.query(
+        `select id from stores where id = $1 limit 1`,
+        [storeId],
+      );
+
+      if (!storeCheck.rows.length) {
+        return res.status(400).json({ error: "Store not found" });
+      }
+
+      const client = await pool.connect();
+
+      try {
+        await client.query("begin");
+
+        const created = [];
+
+        for (const product of products) {
+          const title = String(product.title || "").trim();
+          if (!title) continue;
+
+          const sizes =
+            typeof product.sizes === "string"
+              ? product.sizes
+                  .split(",")
+                  .map((size) => size.trim())
+                  .filter(Boolean)
+              : Array.isArray(product.sizes)
+                ? product.sizes.map((size) => String(size).trim()).filter(Boolean)
+                : [];
+
+          const productId = makeId();
+          const inserted = await client.query(
+            `
+            insert into products (
+              id, store_id, title, description, category, price, old_price, image,
+              sizes, remaining_quantity, views, expiration_date
+            )
+            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            returning *
+            `,
+            [
+              productId,
+              storeId,
+              title,
+              String(product.description || "").trim(),
+              String(product.category || "Other").trim() || "Other",
+              Number(product.price) || 0,
+              Number(product.oldPrice) || 0,
+              String(product.image || "").trim(),
+              sizes,
+              Number(product.remainingQuantity) || 0,
+              0,
+              product.expirationDate || null,
+            ],
+          );
+
+          created.push(inserted.rows[0]);
+        }
+
+        if (!created.length) {
+          await client.query("rollback");
+          return res.status(400).json({ error: "No valid products to import" });
+        }
+
+        await client.query("commit");
+
+        await writeAuditLog({
+          actorType: "admin",
+          actorId: getAdminActorId(),
+          action: "products_bulk_created",
+          entityType: "product",
+          metadata: {
+            storeId,
+            count: created.length,
+          },
+        });
+
+        res.json({
+          success: true,
+          count: created.length,
+          products: created.map(mapProduct),
+        });
+      } catch (err) {
+        await client.query("rollback");
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("bulk create products error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.put("/api/products/:id", requireAdmin, async (req, res) => {
     try {
       const currentRes = await pool.query(
