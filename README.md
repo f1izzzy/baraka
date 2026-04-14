@@ -77,3 +77,18 @@ If something breaks, check in this order:
 - Merchant access is store-based, not shared-key only.
 - Audit logs track operational actions such as merchant login and account changes.
 - Health endpoint: `GET /api/health`
+
+## Pilot Launch Assets
+
+Use the launch docs in:
+
+- [launch-kit/README.md](/C:/Users/user/Documents/New%20project/baraka-project/baraka/launch-kit/README.md)
+
+They include:
+
+- store outreach message
+- store intake template
+- onboarding flow
+- launch checklist
+- 14-day pilot plan
+- feedback form

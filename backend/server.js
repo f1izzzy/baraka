@@ -47,16 +47,13 @@ const MERCHANT_TOKEN_SECRET =
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 const writeAuditLog = createAuditLogger({ pool, makeId });
-const {
-  hashMerchantPassword,
-  signMerchantToken,
-  requireMerchant,
-} = createMerchantAuth({
-  merchantApiKey: MERCHANT_API_KEY,
-  merchantTokenSecret: MERCHANT_TOKEN_SECRET,
-  getApiKey,
-  getBearerToken,
-});
+const { hashMerchantPassword, signMerchantToken, requireMerchant } =
+  createMerchantAuth({
+    merchantApiKey: MERCHANT_API_KEY,
+    merchantTokenSecret: MERCHANT_TOKEN_SECRET,
+    getApiKey,
+    getBearerToken,
+  });
 const telegramApi = createTelegramApi(BOT_TOKEN);
 const requireAdmin = createRequireAdmin({
   adminApiKey: ADMIN_API_KEY,
